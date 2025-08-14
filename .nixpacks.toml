@@ -1,0 +1,23 @@
+[project]
+name = "manteef-stock-api"
+
+[phases.setup.packages]
+python = "python311"       # Force Python 3.11
+gcc = true                 # Needed for compiling some packages like numpy
+make = true                # Optional, for building wheels
+
+[phases.install]
+# Use virtual environment and install dependencies
+commands = [
+    "python -m venv --copies /opt/venv",
+    ". /opt/venv/bin/activate",
+    "pip install --upgrade pip",
+    "pip install -r requirements.txt"
+]
+
+[phases.start]
+# Use gunicorn for production instead of 'python app.py'
+commands = [
+    ". /opt/venv/bin/activate",
+    "gunicorn -w 4 -b 0.0.0.0:8080 app:app"
+]
