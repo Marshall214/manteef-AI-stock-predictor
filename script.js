@@ -1,5 +1,8 @@
 // Global variables
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = window.location.hostname === 'localhost' 
+    ? 'http://localhost:5000' 
+    : 'https://your-railway-app-url.up.railway.app'; // Replace with your Railway URL
+
 let probabilityChart = null;
 let featuresChart = null;
 
@@ -83,6 +86,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Initialize application
 function initializeApp() {
     console.log('🚀 Manteef Stock Predictor Initialized');
+    console.log('🔗 API URL:', API_BASE_URL);
     showEmptyState();
     initializeCharts();
 }
@@ -103,20 +107,41 @@ function attachEventListeners() {
     });
 }
 
-// Check API status
+// Check API status with better error handling for production
 async function checkAPIStatus() {
     try {
-        const response = await fetch(`${API_BASE_URL}/`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        
+        const response = await fetch(`${API_BASE_URL}/`, {
+            signal: controller.signal,
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
         const data = await response.json();
         
         if (data.status === 'healthy' && data.model_loaded) {
             updateAPIStatus('connected', 'API Connected');
+            console.log('✅ API Connected:', data);
         } else {
             updateAPIStatus('error', 'Model Not Loaded');
         }
     } catch (error) {
         console.error('API Status Check Failed:', error);
-        updateAPIStatus('error', 'API Offline');
+        if (error.name === 'AbortError') {
+            updateAPIStatus('error', 'API Timeout');
+        } else {
+            updateAPIStatus('error', 'API Offline');
+        }
     }
 }
 
@@ -129,7 +154,7 @@ function updateAPIStatus(status, message) {
     statusText.textContent = message;
 }
 
-// Handle form submission
+// Handle form submission with better error handling
 async function handlePrediction(event) {
     event.preventDefault();
     
@@ -144,16 +169,24 @@ async function handlePrediction(event) {
     setButtonLoading(true);
     
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        
         const response = await fetch(`${API_BASE_URL}/predict`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
-            body: JSON.stringify(formData)
+            body: JSON.stringify(formData),
+            signal: controller.signal
         });
         
+        clearTimeout(timeoutId);
+        
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
         }
         
         const result = await response.json();
@@ -163,10 +196,19 @@ async function handlePrediction(event) {
         }
         
         displayResults(result, formData);
+        console.log('✅ Prediction successful:', result);
         
     } catch (error) {
         console.error('Prediction Error:', error);
-        showError(`Prediction failed: ${error.message}`);
+        
+        let errorMessage = 'Prediction failed. Please try again.';
+        if (error.name === 'AbortError') {
+            errorMessage = 'Request timed out. Please check your connection and try again.';
+        } else if (error.message) {
+            errorMessage = `Prediction failed: ${error.message}`;
+        }
+        
+        showError(errorMessage);
     } finally {
         setButtonLoading(false);
     }
@@ -551,7 +593,8 @@ window.addEventListener('error', function(event) {
     showError('An unexpected error occurred. Please refresh the page and try again.');
 });
 
-// API health check interval
-setInterval(checkAPIStatus, 30000); // Check every 30 seconds
+// API health check interval - less frequent in production
+setInterval(checkAPIStatus, 60000); // Check every 60 seconds
 
 console.log('Manteef Stock Predictor - Ready for predictions!');
+console.log('🌐 Environment:', window.location.hostname === 'localhost' ? 'Development' : 'Production');
