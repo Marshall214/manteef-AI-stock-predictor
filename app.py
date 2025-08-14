@@ -7,7 +7,14 @@ import os
 from datetime import datetime
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend integration
+
+# Configure CORS for production
+CORS(app, origins=[
+    "http://localhost:3000",  # Local development
+    "https://*.netlify.app",  # Netlify domains
+    "https://*.vercel.app",   # Vercel domains
+    # Add your specific frontend URL here after deployment
+])
 
 # Load the model from the 'model' folder
 model_path = os.path.join('model', 'xgb_stock_model.pkl')
@@ -33,7 +40,8 @@ def health_check():
         'status': 'healthy',
         'model_loaded': model is not None,
         'timestamp': datetime.now().isoformat(),
-        'version': '1.0.0'
+        'version': '1.0.0',
+        'environment': os.getenv('FLASK_ENV', 'development')
     })
 
 @app.route('/predict', methods=['POST'])
@@ -107,9 +115,8 @@ def get_expected_features():
         else:
             # If feature names not available, return common expected features
             features = [
-                'open', 'high', 'low', 'close', 'volume',
-                'pct_change', 'ma_7', 'ma_21', 'volatility_70',
-                'rsi', 'momentum', 'difference', 'average'
+                'pct_change', 'ma_7', 'ma_21', 'volatility_7', 'volume',
+                'RSI_14', 'momentum_7', 'momentum_21', 'ma_diff', 'vol_ratio_20'
             ]
         
         return jsonify({
@@ -130,7 +137,8 @@ def model_info():
     try:
         info = {
             'model_type': type(model).__name__,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'environment': os.getenv('FLASK_ENV', 'development')
         }
         
         # Add feature information if available
@@ -161,11 +169,15 @@ def method_not_allowed(error):
     return jsonify({'error': 'Method not allowed'}), 405
 
 if __name__ == '__main__':
-    print("🚀 Starting Flask Stock Prediction API...")
+    port = int(os.getenv('PORT', 5000))
+    debug = os.getenv('FLASK_ENV') != 'production'
+    
+    print("🚀 Starting Manteef Stock Predictor API...")
     print("📡 Available endpoints:")
     print("   GET  /           - Health check")
     print("   POST /predict    - Make prediction")
     print("   GET  /features   - Get expected features")
     print("   GET  /model-info - Get model information")
+    print(f"🌐 Running on port {port}")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=debug, host='0.0.0.0', port=port)
