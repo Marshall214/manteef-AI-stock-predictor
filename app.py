@@ -43,7 +43,8 @@ CORS(app, resources={
             "http://localhost:3000",
             "http://localhost:5000",
             "https://*.netlify.app",
-            "https://legendary-kangaroo-ac2fd5.netlify.app"
+            "https://legendary-kangaroo-ac2fd5.netlify.app",
+            "https://manteef-stock-predictor.netlify.app"  # Add your Netlify domain
         ],
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"]
@@ -80,12 +81,38 @@ def calculate_technical_indicators(ticker: str, period_days: int = 90) -> Option
     """Fetch stock data and calculate technical indicators"""
     try:
         end_date = datetime.now()
-        start_date = end_date - timedelta(days=period_days)
+        start_date = end_date - timedelta(days=period_days * 2)  # Request twice the data to ensure enough history
         stock = yf.Ticker(ticker.upper())
+        
+        # Verify ticker exists and get info
+        try:
+            info = stock.info
+            if not info or 'regularMarketPrice' not in info:
+                suggested_symbols = "'AAPL' (Apple), 'MSFT' (Microsoft), 'GOOGL' (Google), 'MIVS' (OTC stock)"
+                return {
+                    'error': f"Invalid ticker symbol: {ticker}. Please ensure it's a valid stock symbol. Examples: {suggested_symbols}",
+                    'success': False
+                }
+        except Exception as e:
+            exchange = getattr(stock, 'exchange', 'Unknown')
+            return {
+                'error': f"Could not fetch data for {ticker}. This might be because: 1) The stock is not listed, 2) It's on a different exchange ({exchange}), or 3) The symbol is incorrect.",
+                'success': False
+            }
+            
         df = stock.history(start=start_date, end=end_date)
         
-        if df.empty or len(df) < 30:
-            raise ValueError(f"Insufficient data for {ticker}")
+        if df.empty:
+            return {
+                'error': f"No trading data available for {ticker}. This might be a newly listed stock or it might be delisted.",
+                'success': False
+            }
+        if len(df) < 30:
+            available_days = len(df)
+            return {
+                'error': f"Insufficient historical data for {ticker}. Found {available_days} days of data, but need at least 30 days. This might be a newly listed stock.",
+                'success': False
+            }
         
         close_prices = df['Close']
         volumes = df['Volume']

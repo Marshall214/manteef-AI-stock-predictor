@@ -1,70 +1,56 @@
-// Global variables
 const API_BASE_URL = window.location.hostname === 'localhost' 
     ? 'http://localhost:5000' 
-    : 'https://manteef-ai-stock-predictor-predictor.up.railway.app'; // Replace with your Railway URL
+    : 'https://manteef-ai-stock-predictor-predictor.up.railway.app';
 
 let probabilityChart = null;
 let featuresChart = null;
+let currentMode = 'ticker';
 
-// Feature names as provided by the backend
 const FEATURE_NAMES = [
     'pct_change', 'ma_7', 'ma_21', 'volatility_7', 'volume',
     'RSI_14', 'momentum_7', 'momentum_21', 'ma_diff', 'vol_ratio_20'
 ];
 
-// Sample data for testing
 const SAMPLE_DATA = {
     bullish: {
-        pct_change: 0.025,
-        ma_7: 46.50,
-        ma_21: 45.20,
-        volatility_7: 0.12,
-        volume: 3200000,
-        RSI_14: 72.3,
-        momentum_7: 1.5,
-        momentum_21: 2.1,
-        ma_diff: 1.30,
-        vol_ratio_20: 1.45
+        pct_change: 0.025, ma_7: 46.50, ma_21: 45.20, volatility_7: 0.12, volume: 3200000,
+        RSI_14: 72.3, momentum_7: 1.5, momentum_21: 2.1, ma_diff: 1.30, vol_ratio_20: 1.45
     },
     bearish: {
-        pct_change: -0.018,
-        ma_7: 44.20,
-        ma_21: 45.60,
-        volatility_7: 0.22,
-        volume: 4100000,
-        RSI_14: 28.7,
-        momentum_7: -0.9,
-        momentum_21: -1.4,
-        ma_diff: -1.40,
-        vol_ratio_20: 1.85
+        pct_change: -0.018, ma_7: 44.20, ma_21: 45.60, volatility_7: 0.22, volume: 4100000,
+        RSI_14: 28.7, momentum_7: -0.9, momentum_21: -1.4, ma_diff: -1.40, vol_ratio_20: 1.85
     },
     neutral: {
-        pct_change: 0.001,
-        ma_7: 45.08,
-        ma_21: 45.05,
-        volatility_7: 0.08,
-        volume: 1800000,
-        RSI_14: 51.2,
-        momentum_7: 0.2,
-        momentum_21: 0.1,
-        ma_diff: 0.03,
-        vol_ratio_20: 0.95
+        pct_change: 0.001, ma_7: 45.08, ma_21: 45.05, volatility_7: 0.08, volume: 1800000,
+        RSI_14: 51.2, momentum_7: 0.2, momentum_21: 0.1, ma_diff: 0.03, vol_ratio_20: 0.95
     }
 };
 
-// DOM Elements
 const elements = {
     form: document.getElementById('predictionForm'),
+    tickerInput: document.getElementById('tickerInput'),
+    tickerInfoBtn: document.getElementById('tickerInfoBtn'),
+    predictTickerBtn: document.getElementById('predictTickerBtn'),
+    clearTickerBtn: document.getElementById('clearTickerBtn'),
     predictBtn: document.getElementById('predictBtn'),
     clearBtn: document.getElementById('clearBtn'),
     sampleBtn: document.getElementById('sampleBtn'),
+    tickerInputSection: document.getElementById('tickerInputSection'),
+    manualInputSection: document.getElementById('manualInputSection'),
+    tickerMode: document.getElementById('tickerMode'),
+    manualMode: document.getElementById('manualMode'),
     apiStatus: document.getElementById('apiStatus'),
     loadingState: document.getElementById('loadingState'),
     emptyState: document.getElementById('emptyState'),
     resultsContent: document.getElementById('resultsContent'),
     errorState: document.getElementById('errorState'),
     errorMessage: document.getElementById('errorMessage'),
-    lastUpdate: document.getElementById('lastUpdate'),
+    tickerInfo: document.getElementById('tickerInfo'),
+    tickerSymbol: document.getElementById('tickerSymbol'),
+    currentPrice: document.getElementById('currentPrice'),
+    previousClose: document.getElementById('previousClose'),
+    dataPoints: document.getElementById('dataPoints'),
+    dateRange: document.getElementById('dateRange'),
     predictionCard: document.getElementById('predictionCard'),
     signalText: document.getElementById('signalText'),
     signalIcon: document.getElementById('signalIcon'),
@@ -73,188 +59,260 @@ const elements = {
     strengthBadge: document.getElementById('strengthBadge'),
     upProbability: document.getElementById('upProbability'),
     downProbability: document.getElementById('downProbability'),
-    recommendation: document.getElementById('recommendation')
+    recommendation: document.getElementById('recommendation'),
+    lastUpdate: document.getElementById('lastUpdate')
 };
 
-// Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
     attachEventListeners();
     checkAPIStatus();
 });
 
-// Initialize application
 function initializeApp() {
-    console.log('🚀 Manteef Stock Predictor Initialized');
+    console.log('🚀 Enhanced Manteef Stock Predictor Initialized');
     console.log('🔗 API URL:', API_BASE_URL);
     showEmptyState();
     initializeCharts();
 }
 
-// Attach event listeners
 function attachEventListeners() {
-    elements.form.addEventListener('submit', handlePrediction);
-    elements.clearBtn.addEventListener('click', clearForm);
+    elements.form.addEventListener('submit', handleFormSubmission);
+    elements.tickerInfoBtn.addEventListener('click', getTickerInfo);
+    elements.clearTickerBtn.addEventListener('click', clearTickerForm);
+    elements.clearBtn.addEventListener('click', clearManualForm);
     elements.sampleBtn.addEventListener('click', fillSampleData);
-    
-    // Add input validation listeners
+    elements.tickerInput.addEventListener('input', validateTickerInput);
+    elements.tickerInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleFormSubmission(e);
+        }
+    });
     FEATURE_NAMES.forEach(feature => {
         const input = document.getElementById(feature);
         if (input) {
-            input.addEventListener('input', validateInput);
+            input.addEventListener('input', debounce(validateInput, 300));
             input.addEventListener('blur', validateInput);
         }
     });
 }
 
-// Check API status with better error handling for production
-async function checkAPIStatus() {
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-        
-        const response = await fetch(`${API_BASE_URL}/`, {
-            signal: controller.signal,
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.status === 'healthy' && data.model_loaded) {
-            updateAPIStatus('connected', 'API Connected');
-            console.log('✅ API Connected:', data);
-        } else {
-            updateAPIStatus('error', 'Model Not Loaded');
-        }
-    } catch (error) {
-        console.error('API Status Check Failed:', error);
-        if (error.name === 'AbortError') {
-            updateAPIStatus('error', 'API Timeout');
-        } else {
-            updateAPIStatus('error', 'API Offline');
-        }
+function switchMode(mode) {
+    currentMode = mode;
+    elements.tickerMode.classList.toggle('active', mode === 'ticker');
+    elements.manualMode.classList.toggle('active', mode === 'manual');
+    elements.tickerInputSection.classList.toggle('hidden', mode !== 'ticker');
+    elements.manualInputSection.classList.toggle('hidden', mode !== 'manual');
+    clearTickerForm();
+    clearManualForm();
+    showEmptyState();
+    console.log(`Switched to ${mode} mode`);
+}
+
+async function handleFormSubmission(event) {
+    event.preventDefault();
+    if (currentMode === 'ticker') {
+        await handleTickerPrediction();
+    } else {
+        await handleManualPrediction();
     }
 }
 
-// Update API status indicator
-function updateAPIStatus(status, message) {
-    const statusDot = elements.apiStatus.querySelector('.status-dot');
-    const statusText = elements.apiStatus.querySelector('.status-text');
-    
-    statusDot.className = `status-dot ${status === 'connected' ? 'connected' : ''}`;
-    statusText.textContent = message;
-}
-
-// Handle form submission with better error handling
-async function handlePrediction(event) {
-    event.preventDefault();
-    
-    if (!validateForm()) {
-        showError('Please fill in all required fields with valid values.');
+async function handleTickerPrediction() {
+    const ticker = elements.tickerInput.value.trim().toUpperCase();
+    if (!ticker) {
+        showError('Please enter a stock ticker symbol.');
         return;
     }
-    
-    const formData = getFormData();
-    
+    if (!validateTicker(ticker)) {
+        showError('Invalid ticker format. Use 1-5 letter stock symbols (e.g., AAPL, TSLA).');
+        return;
+    }
     showLoadingState();
-    setButtonLoading(true);
-    
+    setButtonLoading(elements.predictTickerBtn, true);
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-        
+        const response = await fetch(`${API_BASE_URL}/predict-ticker`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ ticker: ticker })
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        }
+        const result = await response.json();
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        displayTickerResults(result);
+        console.log('✅ Ticker prediction successful:', result);
+    } catch (error) {
+        console.error('Ticker prediction error:', error);
+        let errorMessage = 'Ticker prediction failed. Please try again.';
+        if (error.message.includes('Insufficient data')) {
+            errorMessage = `Unable to fetch sufficient data for ${ticker}. Please verify the ticker symbol and try again.`;
+        } else if (error.message.includes('Invalid ticker')) {
+            errorMessage = `Invalid ticker symbol: ${ticker}. Please check and try again.`;
+        } else if (error.message) {
+            errorMessage = error.message;
+        }
+        showError(errorMessage);
+    } finally {
+        setButtonLoading(elements.predictTickerBtn, false);
+    }
+}
+
+async function handleManualPrediction() {
+    if (!validateManualForm()) {
+        showError('Please fill in all required fields with valid numerical values.');
+        return;
+    }
+    const formData = getManualFormData();
+    showLoadingState();
+    setButtonLoading(elements.predictBtn, true);
+    try {
         const response = await fetch(`${API_BASE_URL}/predict`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
-            body: JSON.stringify(formData),
-            signal: controller.signal
+            body: JSON.stringify(formData)
         });
-        
-        clearTimeout(timeoutId);
-        
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
         }
-        
         const result = await response.json();
-        
         if (result.error) {
             throw new Error(result.error);
         }
-        
-        displayResults(result, formData);
-        console.log('✅ Prediction successful:', result);
-        
+        displayManualResults(result, formData);
+        console.log('✅ Manual prediction successful:', result);
     } catch (error) {
-        console.error('Prediction Error:', error);
-        
-        let errorMessage = 'Prediction failed. Please try again.';
-        if (error.name === 'AbortError') {
-            errorMessage = 'Request timed out. Please check your connection and try again.';
-        } else if (error.message) {
-            errorMessage = `Prediction failed: ${error.message}`;
-        }
-        
-        showError(errorMessage);
+        console.error('Manual prediction error:', error);
+        showError(error.message || 'Manual prediction failed. Please try again.');
     } finally {
-        setButtonLoading(false);
+        setButtonLoading(elements.predictBtn, false);
     }
 }
 
-// Get form data
-function getFormData() {
-    const formData = {};
-    
-    FEATURE_NAMES.forEach(feature => {
-        const input = document.getElementById(feature);
-        if (input) {
-            formData[feature] = parseFloat(input.value) || 0;
+async function getTickerInfo() {
+    const ticker = elements.tickerInput.value.trim().toUpperCase();
+    if (!ticker || !validateTicker(ticker)) {
+        showError('Please enter a valid ticker symbol first.');
+        return;
+    }
+    setButtonLoading(elements.tickerInfoBtn, true);
+    try {
+        const response = await fetch(`${API_BASE_URL}/ticker-info`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ ticker: ticker })
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) {
+            throw new Error(data.error || `Failed to fetch data. Please try again later.`);
         }
-    });
-    
-    return formData;
+        displayTickerInfo(data);
+        console.log('✅ Ticker info retrieved:', data);
+    } catch (error) {
+        console.error('Ticker info error:', error);
+        showError(error.message || 'Failed to get ticker information.');
+    } finally {
+        setButtonLoading(elements.tickerInfoBtn, false);
+    }
 }
 
-// Validate form
-function validateForm() {
+function displayTickerResults(result) {
+    displayTickerInfo(result);
+    displayPredictionResults(result);
+    updateCharts(result, result.technical_indicators);
+    elements.tickerInfo.classList.remove('hidden');
+    showResultsState();
+}
+
+function displayTickerInfo(result) {
+    const tickerInfo = result.ticker_info;
+    elements.tickerSymbol.textContent = tickerInfo.ticker;
+    elements.currentPrice.textContent = `$${tickerInfo.current_price.toFixed(2)}`;
+    elements.previousClose.textContent = `$${tickerInfo.previous_close.toFixed(2)}`;
+    elements.dataPoints.textContent = tickerInfo.data_points.toString();
+    const startDate = new Date(tickerInfo.date_range.start);
+    const endDate = new Date(tickerInfo.date_range.end);
+    const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+    elements.dateRange.textContent = `${daysDiff} days`;
+}
+
+function displayManualResults(result, inputData) {
+    elements.tickerInfo.classList.add('hidden');
+    displayPredictionResults(result);
+    updateCharts(result, inputData);
+    showResultsState();
+}
+
+function displayPredictionResults(result) {
+    updateLastUpdate();
+    const isPositive = result.prediction === 1;
+    const signal = result.signal || (isPositive ? 'BUY' : 'SELL');
+    const confidence = result.confidence || 0.5;
+    const strength = result.signal_strength || 'UNKNOWN';
+    elements.predictionCard.className = `prediction-card ${isPositive ? 'buy' : 'sell'}`;
+    elements.signalText.textContent = signal;
+    elements.signalIcon.innerHTML = `<i class="fas fa-arrow-${isPositive ? 'up' : 'down'}"></i>`;
+    const confidencePercent = Math.round(confidence * 100);
+    elements.confidenceFill.style.width = `${confidencePercent}%`;
+    elements.confidenceText.textContent = `${confidencePercent}%`;
+    elements.strengthBadge.textContent = strength;
+    const probabilities = result.probabilities || { up: confidence, down: 1 - confidence };
+    elements.upProbability.textContent = `${Math.round(probabilities.up * 100)}%`;
+    elements.downProbability.textContent = `${Math.round(probabilities.down * 100)}%`;
+    elements.recommendation.textContent = result.recommendation || `${strength}_${signal}`;
+}
+
+function validateTicker(ticker) {
+    return ticker && ticker.length >= 1 && ticker.length <= 5 && /^[A-Z]+$/.test(ticker);
+}
+
+function validateTickerInput(event) {
+    const input = event.target;
+    input.value = input.value.toUpperCase().replace(/[^A-Z]/g, '');
+}
+
+function validateManualForm() {
     let isValid = true;
-    
     FEATURE_NAMES.forEach(feature => {
         const input = document.getElementById(feature);
+        if (!input) return;
         const group = input.closest('.input-group');
-        
-        if (!input.value.trim() || isNaN(parseFloat(input.value))) {
-            group.classList.add('error');
-            group.classList.remove('success');
+        const value = input.value.trim();
+        if (!value || isNaN(parseFloat(value))) {
+            if (group) {
+                group.classList.add('error');
+                group.classList.remove('success');
+            }
             isValid = false;
         } else {
-            group.classList.remove('error');
-            group.classList.add('success');
+            if (group) {
+                group.classList.remove('error');
+                group.classList.add('success');
+            }
         }
     });
-    
     return isValid;
 }
 
-// Validate individual input
 function validateInput(event) {
     const input = event.target;
     const group = input.closest('.input-group');
     const value = input.value.trim();
-    
     if (!value || isNaN(parseFloat(value))) {
         group.classList.add('error');
         group.classList.remove('success');
@@ -264,292 +322,106 @@ function validateInput(event) {
     }
 }
 
-// Display prediction results
-function displayResults(result, inputData) {
-    updateLastUpdate();
-    
-    // Update prediction card
-    const isPositive = result.prediction === 1;
-    const signal = result.signal || (isPositive ? 'BUY' : 'SELL');
-    const confidence = result.confidence || 0;
-    const strength = result.signal_strength || 'UNKNOWN';
-    
-    // Update card styling
-    elements.predictionCard.className = `prediction-card ${isPositive ? 'buy' : 'sell'}`;
-    elements.signalText.textContent = signal;
-    elements.signalIcon.innerHTML = `<i class="fas fa-arrow-${isPositive ? 'up' : 'down'}"></i>`;
-    
-    // Update confidence
-    const confidencePercent = Math.round(confidence * 100);
-    elements.confidenceFill.style.width = `${confidencePercent}%`;
-    elements.confidenceText.textContent = `${confidencePercent}%`;
-    elements.strengthBadge.textContent = strength;
-    
-    // Update metrics
-    const probabilities = result.probabilities || { up: confidence, down: 1 - confidence };
-    elements.upProbability.textContent = `${Math.round(probabilities.up * 100)}%`;
-    elements.downProbability.textContent = `${Math.round(probabilities.down * 100)}%`;
-    elements.recommendation.textContent = result.recommendation || `${strength}_${signal}`;
-    
-    // Update charts
-    updateCharts(result, inputData);
-    
-    // Show results with animation
-    showResultsState();
-}
-
-// Update charts
-function updateCharts(result, inputData) {
-    updateProbabilityChart(result);
-    updateFeaturesChart(inputData);
-}
-
-// Initialize charts
-function initializeCharts() {
-    const chartOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                labels: {
-                    color: '#CBD5E1',
-                    font: {
-                        family: 'Inter'
-                    }
-                }
-            }
-        },
-        scales: {
-            x: {
-                ticks: { color: '#94A3B8' },
-                grid: { color: '#334155' }
-            },
-            y: {
-                ticks: { color: '#94A3B8' },
-                grid: { color: '#334155' }
-            }
-        }
-    };
-    
-    // Initialize probability chart
-    const probCtx = document.getElementById('probabilityChart').getContext('2d');
-    probabilityChart = new Chart(probCtx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Down Probability', 'Up Probability'],
-            datasets: [{
-                data: [50, 50],
-                backgroundColor: ['#EF4444', '#10B981'],
-                borderColor: ['#DC2626', '#059669'],
-                borderWidth: 2
-            }]
-        },
-        options: {
-            ...chartOptions,
-            plugins: {
-                ...chartOptions.plugins,
-                title: {
-                    display: true,
-                    text: 'Prediction Probabilities',
-                    color: '#F8FAFC',
-                    font: { family: 'Inter', size: 14, weight: '600' }
-                }
-            }
-        }
-    });
-    
-    // Initialize features chart
-    const featCtx = document.getElementById('featuresChart').getContext('2d');
-    featuresChart = new Chart(featCtx, {
-        type: 'radar',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Feature Values',
-                data: [],
-                borderColor: '#06B6D4',
-                backgroundColor: 'rgba(6, 182, 212, 0.1)',
-                pointBackgroundColor: '#06B6D4',
-                pointBorderColor: '#0891B2',
-                pointRadius: 4,
-                borderWidth: 2
-            }]
-        },
-        options: {
-            ...chartOptions,
-            plugins: {
-                ...chartOptions.plugins,
-                title: {
-                    display: true,
-                    text: 'Technical Indicators',
-                    color: '#F8FAFC',
-                    font: { family: 'Inter', size: 14, weight: '600' }
-                }
-            },
-            scales: {
-                r: {
-                    ticks: { color: '#64748B', backdropColor: 'transparent' },
-                    grid: { color: '#334155' },
-                    pointLabels: { color: '#94A3B8', font: { size: 10 } }
-                }
-            }
-        }
-    });
-}
-
-// Update probability chart
-function updateProbabilityChart(result) {
-    if (!probabilityChart) return;
-    
-    const probabilities = result.probabilities || { up: result.confidence, down: 1 - result.confidence };
-    
-    probabilityChart.data.datasets[0].data = [
-        Math.round(probabilities.down * 100),
-        Math.round(probabilities.up * 100)
-    ];
-    
-    probabilityChart.update('active');
-}
-
-// Update features chart
-function updateFeaturesChart(inputData) {
-    if (!featuresChart) return;
-    
-    // Normalize values for better visualization
-    const normalizedData = normalizeFeatures(inputData);
-    
-    featuresChart.data.labels = FEATURE_NAMES.map(name => 
-        name.replace(/_/g, ' ').toUpperCase()
-    );
-    featuresChart.data.datasets[0].data = normalizedData;
-    
-    featuresChart.update('active');
-}
-
-// Normalize feature values for radar chart
-function normalizeFeatures(data) {
-    const normalized = [];
-    
+function getManualFormData() {
+    const formData = {};
     FEATURE_NAMES.forEach(feature => {
-        let value = data[feature] || 0;
-        
-        // Apply feature-specific normalization
-        switch(feature) {
-            case 'pct_change':
-                value = Math.abs(value) * 1000; // Scale percentage
-                break;
-            case 'ma_7':
-            case 'ma_21':
-                value = value / 100; // Scale price
-                break;
-            case 'volatility_7':
-                value = value * 100; // Scale volatility
-                break;
-            case 'volume':
-                value = value / 1000000; // Scale to millions
-                break;
-            case 'RSI_14':
-                value = value; // Already 0-100
-                break;
-            case 'momentum_7':
-            case 'momentum_21':
-                value = Math.abs(value) * 10; // Scale momentum
-                break;
-            case 'ma_diff':
-                value = Math.abs(value) * 10; // Scale difference
-                break;
-            case 'vol_ratio_20':
-                value = value * 10; // Scale ratio
-                break;
+        const input = document.getElementById(feature);
+        if (input && input.value.trim()) {
+            const value = parseFloat(input.value);
+            formData[feature] = isNaN(value) ? 0 : value;
+        } else {
+            formData[feature] = 0;
         }
-        
-        normalized.push(Math.min(Math.max(value, 0), 100)); // Clamp to 0-100
     });
-    
-    return normalized;
+    return formData;
 }
 
-// Clear form
-function clearForm() {
-    elements.form.reset();
-    
-    // Remove validation classes
-    document.querySelectorAll('.input-group').forEach(group => {
-        group.classList.remove('error', 'success');
-    });
-    
-    showEmptyState();
+function clearTickerForm() {
+    elements.tickerInput.value = '';
 }
 
-// Fill sample data
+function clearManualForm() {
+    FEATURE_NAMES.forEach(feature => {
+        const input = document.getElementById(feature);
+        if (input) {
+            input.value = '';
+            const group = input.closest('.input-group');
+            if (group) {
+                group.classList.remove('error', 'success');
+            }
+        }
+    });
+}
+
 function fillSampleData() {
     const samples = Object.keys(SAMPLE_DATA);
     const randomSample = SAMPLE_DATA[samples[Math.floor(Math.random() * samples.length)]];
-    
     FEATURE_NAMES.forEach(feature => {
         const input = document.getElementById(feature);
         if (input && randomSample[feature] !== undefined) {
             input.value = randomSample[feature];
-            
-            // Trigger validation
             const group = input.closest('.input-group');
-            group.classList.remove('error');
-            group.classList.add('success');
+            if (group) {
+                group.classList.remove('error');
+                group.classList.add('success');
+            }
         }
     });
 }
 
-// State management
 function showLoadingState() {
-    elements.emptyState.style.display = 'none';
-    elements.resultsContent.style.display = 'none';
-    elements.errorState.style.display = 'none';
-    elements.loadingState.style.display = 'block';
+    setElementDisplay('loadingState', 'flex');
+    setElementDisplay('emptyState', 'none');
+    setElementDisplay('resultsContent', 'none');
+    setElementDisplay('errorState', 'none');
 }
 
 function showEmptyState() {
-    elements.loadingState.style.display = 'none';
-    elements.resultsContent.style.display = 'none';
-    elements.errorState.style.display = 'none';
-    elements.emptyState.style.display = 'block';
+    setElementDisplay('loadingState', 'none');
+    setElementDisplay('emptyState', 'flex');
+    setElementDisplay('resultsContent', 'none');
+    setElementDisplay('errorState', 'none');
 }
 
 function showResultsState() {
-    elements.loadingState.style.display = 'none';
-    elements.emptyState.style.display = 'none';
-    elements.errorState.style.display = 'none';
-    elements.resultsContent.style.display = 'block';
+    setElementDisplay('loadingState', 'none');
+    setElementDisplay('emptyState', 'none');
+    setElementDisplay('errorState', 'none');
+    setElementDisplay('resultsContent', 'block');
     elements.resultsContent.classList.add('fade-in');
 }
 
 function showError(message) {
-    elements.loadingState.style.display = 'none';
-    elements.emptyState.style.display = 'none';
-    elements.resultsContent.style.display = 'none';
-    elements.errorState.style.display = 'block';
+    setElementDisplay('loadingState', 'none');
+    setElementDisplay('emptyState', 'none');
+    setElementDisplay('resultsContent', 'none');
+    setElementDisplay('errorState', 'flex');
     elements.errorMessage.textContent = message;
 }
 
-// Button loading state
-function setButtonLoading(loading) {
-    const btn = elements.predictBtn;
-    const span = btn.querySelector('span');
-    const loader = btn.querySelector('.btn-loader');
-    
-    if (loading) {
-        btn.classList.add('loading');
-        btn.disabled = true;
-        span.style.opacity = '0';
-        loader.style.display = 'block';
-    } else {
-        btn.classList.remove('loading');
-        btn.disabled = false;
-        span.style.opacity = '1';
-        loader.style.display = 'none';
+function setElementDisplay(elementKey, display) {
+    if (elements[elementKey]) {
+        elements[elementKey].style.display = display;
     }
 }
 
-// Update last update timestamp
+function setButtonLoading(button, loading) {
+    if (!button) return;
+    const span = button.querySelector('span');
+    const loader = button.querySelector('.btn-loader');
+    if (loading) {
+        button.classList.add('loading');
+        button.disabled = true;
+        if (span) span.style.opacity = '0';
+        if (loader) loader.style.display = 'block';
+    } else {
+        button.classList.remove('loading');
+        button.disabled = false;
+        if (span) span.style.opacity = '1';
+        if (loader) loader.style.display = 'none';
+    }
+}
+
 function updateLastUpdate() {
     const now = new Date();
     const timeString = now.toLocaleTimeString('en-US', {
@@ -560,19 +432,13 @@ function updateLastUpdate() {
     elements.lastUpdate.textContent = `Last updated: ${timeString}`;
 }
 
-// Reset results (called from HTML)
 function resetResults() {
     showEmptyState();
-    clearForm();
-}
-
-// Utility functions
-function formatNumber(num, decimals = 2) {
-    return Number(num).toFixed(decimals);
-}
-
-function formatPercent(num) {
-    return `${Math.round(num * 100)}%`;
+    if (currentMode === 'ticker') {
+        clearTickerForm();
+    } else {
+        clearManualForm();
+    }
 }
 
 function debounce(func, wait) {
@@ -587,14 +453,142 @@ function debounce(func, wait) {
     };
 }
 
-// Error handling
-window.addEventListener('error', function(event) {
-    console.error('JavaScript Error:', event.error);
-    showError('An unexpected error occurred. Please refresh the page and try again.');
-});
+async function checkAPIStatus() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/`);
+        if (response.ok) {
+            const data = await response.json();
+            if (data.status === 'healthy') {
+                elements.apiStatus.querySelector('.status-dot').classList.add('connected');
+                elements.apiStatus.querySelector('.status-text').textContent = 'Connected to API';
+            } else {
+                throw new Error('API not healthy');
+            }
+        } else {
+            throw new Error('API connection failed');
+        }
+    } catch (error) {
+        console.error('API status check failed:', error);
+        elements.apiStatus.querySelector('.status-text').textContent = 'API Disconnected';
+    }
+}
 
-// API health check interval - less frequent in production
-setInterval(checkAPIStatus, 60000); // Check every 60 seconds
+function initializeCharts() {
+    const probabilityCtx = document.getElementById('probabilityChart').getContext('2d');
+    const featuresCtx = document.getElementById('featuresChart').getContext('2d');
 
-console.log('Manteef Stock Predictor - Ready for predictions!');
-console.log('🌐 Environment:', window.location.hostname === 'localhost' ? 'Development' : 'Production');
+    probabilityChart = new Chart(probabilityCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Up', 'Down'],
+            datasets: [{
+                label: 'Prediction Probabilities',
+                data: [0, 0],
+                backgroundColor: ['#10b981', '#ef4444'],
+                borderColor: ['#10b981', '#ef4444'],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 1,
+                    title: {
+                        display: true,
+                        text: 'Probability',
+                        color: '#f8fafc'
+                    },
+                    ticks: {
+                        color: '#94a3b8'
+                    }
+                },
+                x: {
+                    ticks: {
+                        color: '#94a3b8'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                title: {
+                    display: true,
+                    text: 'Prediction Probabilities',
+                    color: '#f8fafc'
+                }
+            }
+        }
+    });
+
+    featuresChart = new Chart(featuresCtx, {
+        type: 'bar',
+        data: {
+            labels: FEATURE_NAMES,
+            datasets: [{
+                label: 'Feature Values',
+                data: Array(FEATURE_NAMES.length).fill(0),
+                backgroundColor: '#06b6d4',
+                borderColor: '#06b6d4',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Normalized Value',
+                        color: '#f8fafc'
+                    },
+                    ticks: {
+                        color: '#94a3b8'
+                    }
+                },
+                x: {
+                    ticks: {
+                        color: '#94a3b8',
+                        maxRotation: 45,
+                        minRotation: 45
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                title: {
+                    display: true,
+                    text: 'Technical Indicators',
+                    color: '#f8fafc'
+                }
+            }
+        }
+    });
+}
+
+function updateCharts(result, features) {
+    const probabilities = result.probabilities || { up: 0.5, down: 0.5 };
+    probabilityChart.data.datasets[0].data = [probabilities.up, probabilities.down];
+    probabilityChart.update();
+
+    const featureValues = FEATURE_NAMES.map(feature => {
+        const value = features[feature] || 0;
+        if (feature === 'volume') {
+            return value / 1000000; // Normalize volume
+        } else if (feature === 'RSI_14') {
+            return value / 100; // Normalize RSI
+        } else if (['ma_7', 'ma_21'].includes(feature)) {
+            return value / 100; // Normalize MAs
+        }
+        return Math.abs(value); // Use absolute value for others
+    });
+    featuresChart.data.datasets[0].data = featureValues;
+    featuresChart.update();
+}
