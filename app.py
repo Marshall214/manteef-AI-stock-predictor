@@ -7,34 +7,32 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# CORS configuration
+# Configure CORS properly for deployed frontend
 CORS(app, origins=[
-    "http://localhost:3000",  # Local dev
-    "https://*.netlify.app",  # Any Netlify subdomain
-    "https://*.vercel.app",   # Any Vercel subdomain
-    "https://legendary-kangaroo-ac2fd5.netlify.app"  # Your specific frontend
+    "http://localhost:3000",  # Dev
+    "https://*.netlify.app",  # Netlify
+    "https://*.vercel.app",   # Vercel
+    "https://legendary-kangaroo-ac2fd5.netlify.app",  # Your actual URL
 ])
 
-# model load
-model_path = os.path.join('model', 'xgb_stock_model.pkl')
+# Load model
+MODEL_PATH = os.path.join('model', 'xgb_stock_model.pkl')
 try:
-    model = joblib.load(model_path)
-    print(f"✅ Model loaded from {os.path.abspath(model_path)}")
+    model = joblib.load(MODEL_PATH)
+    print(f"✅ Model loaded successfully from {os.path.abspath(MODEL_PATH)}")
     if hasattr(model, 'feature_names_in_'):
         feature_names = model.feature_names_in_.tolist()
         print(f"Expected features: {feature_names}")
     else:
-        feature_names = [
-            'pct_change', 'ma_7', 'ma_21', 'volatility_7', 'volume',
-            'RSI_14', 'momentum_7', 'momentum_21', 'ma_diff', 'vol_ratio_20'
-        ]
-        print("Feature names not found in model. Using default features.")
+        feature_names = None
 except Exception as e:
-    print(f"Error loading model: {e}")
+    print(f"❌ Error loading model: {e}")
     model = None
-    feature_names = []
+    feature_names = None
 
-# endpoints
+# -------------------------
+# Routes
+# -------------------------
 @app.route('/', methods=['GET'])
 def health_check():
     return jsonify({
@@ -44,7 +42,6 @@ def health_check():
         'version': '1.0.0',
         'environment': os.getenv('FLASK_ENV', 'development')
     })
-
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -56,49 +53,24 @@ def predict():
         if not data:
             return jsonify({'error': 'No JSON data provided'}), 400
 
-        # Ensure all expected features are present
-        for feature in feature_names:
-            if feature not in data:
-                return jsonify({'error': f'Missing feature: {feature}'}), 400
-
-        # Create DataFrame with correct feature order
         df = pd.DataFrame([data])
-        df = df[feature_names]  # Ensure correct column order
-        
-        if df.empty or df.isnull().any().any():
-            return jsonify({'error': 'Empty or missing values in input data'}), 400
 
-        # Make prediction - XGBoost returns probabilities for binary classification
-        try:
-            # For XGBoost binary classification, predict returns class probabilities
-            if hasattr(model, 'predict_proba'):
-                probabilities = model.predict_proba(df)[0]
-                prediction = 1 if probabilities[1] > 0.5 else 0
-            else:
-                # XGBoost classifier with predict method
-                prediction_prob = model.predict(df)[0]
-                if isinstance(prediction_prob, float):
-                    # Raw probability output
-                    probabilities = [1 - prediction_prob, prediction_prob]
-                    prediction = 1 if prediction_prob > 0.5 else 0
-                else:
-                    # Direct class prediction
-                    prediction = int(prediction_prob)
-                    probabilities = [1 - prediction, prediction]
-                    
-        except Exception as e:
-            print(f"Prediction error: {e}")
-            return jsonify({'error': f'Model prediction failed: {str(e)}'}), 500
+        if df.isnull().any().any():
+            return jsonify({'error': 'Missing values in input data'}), 400
 
+        # Make prediction safely
+        prediction = model.predict(df)[0]
+        probabilities = model.predict_proba(df)[0]
         confidence = float(max(probabilities))
+
+        # Determine signal
+        signal = 'BUY' if prediction == 1 else 'SELL'
         if confidence >= 0.7:
             strength = "STRONG"
         elif confidence >= 0.6:
             strength = "MODERATE"
         else:
             strength = "WEAK"
-
-        signal = 'BUY' if prediction == 1 else 'SELL'
 
         return jsonify({
             'prediction': int(prediction),
@@ -113,22 +85,27 @@ def predict():
             'recommendation': f"{strength}_{signal}"
         })
 
-    except ValueError as e:
-        return jsonify({'error': f'Invalid input data: {str(e)}'}), 400
     except Exception as e:
-        print(f"Prediction error: {e}")  # Add logging
-        return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
+        return jsonify({'error': f'Model prediction failed: {str(e)}'}), 500
 
 
 @app.route('/features', methods=['GET'])
-def get_expected_features():
+def get_features():
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 500
 
     try:
+        if feature_names:
+            features = feature_names
+        else:
+            # fallback
+            features = [
+                'pct_change', 'ma_7', 'ma_21', 'volatility_7', 'volume',
+                'RSI_14', 'momentum_7', 'momentum_21', 'ma_diff', 'vol_ratio_20'
+            ]
         return jsonify({
-            'features': feature_names,
-            'feature_count': len(feature_names),
+            'features': features,
+            'feature_count': len(features),
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
@@ -137,7 +114,6 @@ def get_expected_features():
 
 @app.route('/model-info', methods=['GET'])
 def model_info():
-    """Get information about the loaded model"""
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 500
 
@@ -148,17 +124,15 @@ def model_info():
             'environment': os.getenv('FLASK_ENV', 'development')
         }
 
-        # Add feature information if available
-        if hasattr(model, 'feature_names_in_'):
-            info['feature_count'] = len(model.feature_names_in_)
-            info['features'] = model.feature_names_in_.tolist()
+        if feature_names:
+            info['feature_count'] = len(feature_names)
+            info['features'] = feature_names
 
-        # Handle pipelines safely
+        # Safe handling for pipeline or single estimator
         estimator = model
-        if hasattr(model, 'steps'):  # It's a pipeline
-            estimator = model.steps[-1][1]  # Get the final estimator
+        if hasattr(model, 'steps'):  # pipeline
+            estimator = model.steps[-1][1]
 
-        # Only get params if the estimator has them
         if hasattr(estimator, 'get_params'):
             params = estimator.get_params()
             info['key_parameters'] = {
@@ -172,27 +146,23 @@ def model_info():
     except Exception as e:
         return jsonify({'error': f'Model info failed: {str(e)}'}), 500
 
-# error handlers
+
+# Error handlers
 @app.errorhandler(404)
-def not_found(error):
+def not_found(e):
     return jsonify({'error': 'Endpoint not found'}), 404
 
 @app.errorhandler(405)
-def method_not_allowed(error):
+def method_not_allowed(e):
     return jsonify({'error': 'Method not allowed'}), 405
 
-
-# run app
+# -------------------------
+# Run the app
+# -------------------------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("FLASK_ENV") != "production"
 
     print("🚀 Starting Manteef Stock Predictor API...")
-    print("📡 Available endpoints:")
-    print("   GET  /           - Health check")
-    print("   POST /predict    - Make prediction")
-    print("   GET  /features   - Get expected features")
-    print("   GET  /model-info - Get model information")
     print(f"🌐 Running on port {port}")
-
     app.run(debug=debug, host="0.0.0.0", port=port)
