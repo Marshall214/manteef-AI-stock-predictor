@@ -56,24 +56,39 @@ def predict():
         if not data:
             return jsonify({'error': 'No JSON data provided'}), 400
 
+        # Ensure all expected features are present
+        for feature in feature_names:
+            if feature not in data:
+                return jsonify({'error': f'Missing feature: {feature}'}), 400
+
+        # Create DataFrame with correct feature order
         df = pd.DataFrame([data])
+        df = df[feature_names]  # Ensure correct column order
+        
         if df.empty or df.isnull().any().any():
             return jsonify({'error': 'Empty or missing values in input data'}), 400
 
-        # safe predictions
-        pred_model = model
+        # Make prediction - XGBoost returns probabilities for binary classification
         try:
-            # If pipeline, extract final estimator
-            if hasattr(model, 'named_steps') and 'xgb' in model.named_steps:
-                pred_model = model.named_steps['xgb']
-        except Exception:
-            pred_model = model
-
-        prediction = model.predict(df)[0]  # pipeline ensures preprocessing
-        try:
-            probabilities = pred_model.predict_proba(df)[0]
-        except AttributeError:
-            probabilities = [1 - prediction, prediction] if prediction in [0, 1] else [0.5, 0.5]
+            # For XGBoost binary classification, predict returns class probabilities
+            if hasattr(model, 'predict_proba'):
+                probabilities = model.predict_proba(df)[0]
+                prediction = 1 if probabilities[1] > 0.5 else 0
+            else:
+                # XGBoost classifier with predict method
+                prediction_prob = model.predict(df)[0]
+                if isinstance(prediction_prob, float):
+                    # Raw probability output
+                    probabilities = [1 - prediction_prob, prediction_prob]
+                    prediction = 1 if prediction_prob > 0.5 else 0
+                else:
+                    # Direct class prediction
+                    prediction = int(prediction_prob)
+                    probabilities = [1 - prediction, prediction]
+                    
+        except Exception as e:
+            print(f"Prediction error: {e}")
+            return jsonify({'error': f'Model prediction failed: {str(e)}'}), 500
 
         confidence = float(max(probabilities))
         if confidence >= 0.7:
@@ -101,6 +116,7 @@ def predict():
     except ValueError as e:
         return jsonify({'error': f'Invalid input data: {str(e)}'}), 400
     except Exception as e:
+        print(f"Prediction error: {e}")  # Add logging
         return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
 
 
@@ -125,27 +141,53 @@ def model_info():
         return jsonify({'error': 'Model not loaded'}), 500
 
     try:
+        model_type = type(model).__name__
+        
         info = {
-            'model_type': type(model).__name__,
+            'model_type': model_type,
             'timestamp': datetime.now().isoformat(),
             'environment': os.getenv('FLASK_ENV', 'development'),
             'feature_count': len(feature_names),
-            'features': feature_names
+            'features': feature_names,
+            'key_parameters': {}
         }
 
-        # Safely add key parameters if available
+        # Get XGBoost-specific parameters
         try:
-            params = model.get_params()
-            info['key_parameters'] = {
-                'n_estimators': params.get('n_estimators'),
-                'max_depth': params.get('max_depth'),
-                'learning_rate': params.get('learning_rate')
-            }
-        except Exception:
-            info['key_parameters'] = {}
+            if hasattr(model, 'get_params'):
+                # Scikit-learn wrapper (XGBClassifier)
+                params = model.get_params()
+                info['key_parameters'] = {
+                    'n_estimators': params.get('n_estimators'),
+                    'max_depth': params.get('max_depth'),
+                    'learning_rate': params.get('learning_rate'),
+                    'objective': params.get('objective'),
+                    'subsample': params.get('subsample')
+                }
+            elif hasattr(model, 'get_xgb_params'):
+                # Native XGBoost model
+                params = model.get_xgb_params()
+                info['key_parameters'] = {
+                    'n_estimators': params.get('n_estimators'),
+                    'max_depth': params.get('max_depth'),
+                    'learning_rate': params.get('eta', params.get('learning_rate')),
+                    'objective': params.get('objective'),
+                    'subsample': params.get('subsample')
+                }
+            elif hasattr(model, 'save_config'):
+                # XGBoost 2.0+ format
+                info['key_parameters'] = {'note': 'XGBoost 2.0+ model - parameters embedded in model'}
+            else:
+                print(f"Model type {model_type} - no parameter extraction method found")
+                info['key_parameters'] = {'note': f'Parameters not accessible for {model_type}'}
+                
+        except Exception as e:
+            print(f"Warning: Could not get model parameters: {e}")
+            info['key_parameters'] = {'error': f'Parameter extraction failed: {str(e)}'}
 
         return jsonify(info)
     except Exception as e:
+        print(f"Model info error: {e}")
         return jsonify({'error': f'Failed to get model info: {str(e)}'}), 500
 
 
