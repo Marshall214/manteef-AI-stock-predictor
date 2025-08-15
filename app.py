@@ -18,29 +18,20 @@ CORS(app, origins=[
 # model load
 # Ensure the path works in deployment
 # model load
-MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'model')
-model_path = os.path.join(MODEL_DIR, 'xgb_stock_model.pkl')
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xgb_stock_model.pkl')
+
+try:
+    model = joblib.load(MODEL_PATH)
+    print(f"Model loaded from {MODEL_PATH}")
+except Exception as e:
+    print(f"Error loading model from {MODEL_PATH}: {e}")
+    model = None
+
 
 feature_names = [
     'pct_change', 'ma_7', 'ma_21', 'volatility_7', 'volume',
     'RSI_14', 'momentum_7', 'momentum_21', 'ma_diff', 'vol_ratio_20'
 ]
-
-try:
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f"Model file not found at {model_path}")
-    
-    model = joblib.load(model_path)
-    print(f"✅ Model loaded from {model_path}")
-
-    # Optional: overwrite default features if model has them
-    if hasattr(model, 'feature_names_in_'):
-        feature_names = model.feature_names_in_.tolist()
-        print(f"Expected features from model: {feature_names}")
-
-except Exception as e:
-    print(f"❌ Error loading model: {e}")
-    model = None
 
 
 # endpoints
