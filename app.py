@@ -3,6 +3,7 @@ from flask_cors import CORS
 import joblib
 import pandas as pd
 import os
+import xgboost as xgb
 from datetime import datetime
 
 app = Flask(__name__)
@@ -18,15 +19,16 @@ CORS(app, origins=[
 # model load
 # Ensure the path works in deployment
 # model load
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xgb_stock_model.pkl')
+# Path relative to app.py location
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "model", "xgb_stock_model.json")
 
 try:
-    model = joblib.load(MODEL_PATH)
-    print(f"Model loaded from {MODEL_PATH}")
+    model = xgb.XGBClassifier()
+    model.load_model(MODEL_PATH)
+    print(f" Model loaded from {os.path.abspath(MODEL_PATH)}")
 except Exception as e:
-    print(f"Error loading model from {MODEL_PATH}: {e}")
+    print(f" Error loading model: {e}")
     model = None
-
 
 feature_names = [
     'pct_change', 'ma_7', 'ma_21', 'volatility_7', 'volume',
