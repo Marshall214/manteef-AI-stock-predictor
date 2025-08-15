@@ -344,6 +344,15 @@ def model_info():
         print(f"Model info error: {e}")
         return jsonify({'error': f'Failed to get model info: {str(e)}'}), 500
 
+# Healthcheck endpoint
+@app.route('/', methods=['GET'])
+def health_check():
+    """Simple health check that doesn't require model loading"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat()
+    })
+
 # Error handlers
 @app.errorhandler(404)
 def not_found(error):
