@@ -15,7 +15,7 @@ CORS(app, origins=[
     "http://localhost:3000",  # Local development
     "https://*.netlify.app",  # All Netlify subdomains
     "https://*.vercel.app",   # All Vercel subdomains
-    "https://https://legendary-kangaroo-ac2fd5.netlify.app",  # Your specific Netlify URL
+    "https://legendary-kangaroo-ac2fd5.netlify.app",  # Your specific Netlify URL
     # Add any custom domain you might use later
 ])
 # Load the model from the 'model' folder
