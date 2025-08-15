@@ -9,13 +9,15 @@ from datetime import datetime
 app = Flask(__name__)
 
 # Configure CORS for production
+# Replace the CORS configuration in your app.py with:
+
 CORS(app, origins=[
     "http://localhost:3000",  # Local development
-    "https://*.netlify.app",  # Netlify domains
-    "https://*.vercel.app",   # Vercel domains
-    # Add your specific frontend URL here after deployment
+    "https://*.netlify.app",  # All Netlify subdomains
+    "https://*.vercel.app",   # All Vercel subdomains
+    "https://https://legendary-kangaroo-ac2fd5.netlify.app",  # Your specific Netlify URL
+    # Add any custom domain you might use later
 ])
-
 # Load the model from the 'model' folder
 model_path = os.path.join('model', 'xgb_stock_model.pkl')
 try:
@@ -171,8 +173,8 @@ def method_not_allowed(error):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("FLASK_ENV") != "production"
-    app.run(debug=debug, host="0.0.0.0", port=port)
     
+    # Print startup info before running the server
     print("🚀 Starting Manteef Stock Predictor API...")
     print("📡 Available endpoints:")
     print("   GET  /           - Health check")
@@ -181,4 +183,5 @@ if __name__ == "__main__":
     print("   GET  /model-info - Get model information")
     print(f"🌐 Running on port {port}")
     
-    app.run(debug=debug, host='0.0.0.0', port=port)
+    # Start Flask app
+    app.run(debug=debug, host="0.0.0.0", port=port)
