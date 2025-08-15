@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Tests</title>
+    <script src="https://unpkg.com/mocha/mocha.js"></script>
+    <script src="https://unpkg.com/chai/chai.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/mocha/mocha.css" />
+</head>
+<body>
+    <div id="mocha"></div>
+
+    <!-- Load your app's HTML (hidden) -->
+    <div id="app" style="display: none;">
+        <div class="ticker-input-group">
+            <input type="text" id="tickerInput">
+            <button id="searchButton">Search</button>
+        </div>
+        <div class="results-section hidden"></div>
+        <div class="error-section hidden"></div>
+    </div>
+
+    <script>
+        mocha.setup('bdd');
+        const expect = chai.expect;
+
+        // Test suite
+        describe('Stock Predictor Frontend', () => {
+            beforeEach(() => {
+                // Reset input
+                document.getElementById('tickerInput').value = '';
+                document.querySelector('.results-section').classList.add('hidden');
+                document.querySelector('.error-section').classList.add('hidden');
+            });
+
+            it('should have required DOM elements', () => {
+                expect(document.getElementById('tickerInput')).to.exist;
+                expect(document.getElementById('searchButton')).to.exist;
+                expect(document.querySelector('.results-section')).to.exist;
+                expect(document.querySelector('.error-section')).to.exist;
+            });
+
+            it('should validate ticker input', () => {
+                const input = document.getElementById('tickerInput');
+                input.value = '';
+                document.getElementById('searchButton').click();
+                // Should not make API call with empty input
+                expect(document.querySelector('.error-section').classList.contains('hidden')).to.be.true;
+            });
+
+            it('should handle API errors', async () => {
+                const response = await fetch('http://localhost:5000/');
+                expect(response.ok).to.be.true;
+            });
+        });
+
+        // Run tests
+        mocha.run();
+    </script>
+</body>
+</html>

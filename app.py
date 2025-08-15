@@ -1,21 +1,54 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_caching import Cache
 import pandas as pd
+import numpy as np
 import os
 import xgboost as xgb
 from datetime import datetime, timedelta
 import yfinance as yf
 from typing import Dict, Optional
+import logging
+import psutil
+from functools import wraps
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# Cache configuration
+cache = Cache(app, config={
+    'CACHE_TYPE': 'simple',
+    'CACHE_DEFAULT_TIMEOUT': 300  # 5 minutes
+})
+
+# Rate limiter configuration
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"]
+)
+
 # CORS configuration
-CORS(app, origins=[
-    "http://localhost:3000",  # Local dev
-    "https://*.netlify.app",  # Any Netlify subdomain
-    "https://*.vercel.app",   # Any Vercel subdomain
-    "https://legendary-kangaroo-ac2fd5.netlify.app"  # Specific frontend
-])
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:3000",
+            "http://localhost:5000",
+            "https://*.netlify.app",
+            "https://legendary-kangaroo-ac2fd5.netlify.app"
+        ],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 # Model load
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "model", "xgb_stock_model.json")
