@@ -137,59 +137,40 @@ def get_expected_features():
 
 @app.route('/model-info', methods=['GET'])
 def model_info():
+    """Get information about the loaded model"""
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 500
 
     try:
-        model_type = type(model).__name__
-        
         info = {
-            'model_type': model_type,
+            'model_type': type(model).__name__,
             'timestamp': datetime.now().isoformat(),
-            'environment': os.getenv('FLASK_ENV', 'development'),
-            'feature_count': len(feature_names),
-            'features': feature_names,
-            'key_parameters': {}
+            'environment': os.getenv('FLASK_ENV', 'development')
         }
 
-        # Get XGBoost-specific parameters
-        try:
-            if hasattr(model, 'get_params'):
-                # Scikit-learn wrapper (XGBClassifier)
-                params = model.get_params()
-                info['key_parameters'] = {
-                    'n_estimators': params.get('n_estimators'),
-                    'max_depth': params.get('max_depth'),
-                    'learning_rate': params.get('learning_rate'),
-                    'objective': params.get('objective'),
-                    'subsample': params.get('subsample')
-                }
-            elif hasattr(model, 'get_xgb_params'):
-                # Native XGBoost model
-                params = model.get_xgb_params()
-                info['key_parameters'] = {
-                    'n_estimators': params.get('n_estimators'),
-                    'max_depth': params.get('max_depth'),
-                    'learning_rate': params.get('eta', params.get('learning_rate')),
-                    'objective': params.get('objective'),
-                    'subsample': params.get('subsample')
-                }
-            elif hasattr(model, 'save_config'):
-                # XGBoost 2.0+ format
-                info['key_parameters'] = {'note': 'XGBoost 2.0+ model - parameters embedded in model'}
-            else:
-                print(f"Model type {model_type} - no parameter extraction method found")
-                info['key_parameters'] = {'note': f'Parameters not accessible for {model_type}'}
-                
-        except Exception as e:
-            print(f"Warning: Could not get model parameters: {e}")
-            info['key_parameters'] = {'error': f'Parameter extraction failed: {str(e)}'}
+        # Add feature information if available
+        if hasattr(model, 'feature_names_in_'):
+            info['feature_count'] = len(model.feature_names_in_)
+            info['features'] = model.feature_names_in_.tolist()
+
+        # Handle pipelines safely
+        estimator = model
+        if hasattr(model, 'steps'):  # It's a pipeline
+            estimator = model.steps[-1][1]  # Get the final estimator
+
+        # Only get params if the estimator has them
+        if hasattr(estimator, 'get_params'):
+            params = estimator.get_params()
+            info['key_parameters'] = {
+                'n_estimators': params.get('n_estimators'),
+                'max_depth': params.get('max_depth'),
+                'learning_rate': params.get('learning_rate')
+            }
 
         return jsonify(info)
-    except Exception as e:
-        print(f"Model info error: {e}")
-        return jsonify({'error': f'Failed to get model info: {str(e)}'}), 500
 
+    except Exception as e:
+        return jsonify({'error': f'Model info failed: {str(e)}'}), 500
 
 # error handlers
 @app.errorhandler(404)
