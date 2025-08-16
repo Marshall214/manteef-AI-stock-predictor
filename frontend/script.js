@@ -563,7 +563,319 @@ function updateEnhancedMetrics(result) {
     }
 }
 
-// Chart functions
+// Chart functions - FIXED VERSION
+function initializeCharts() {
+    console.log('📊 Initializing charts...');
+    
+    // Destroy existing charts if they exist
+    if (probabilityChart) {
+        probabilityChart.destroy();
+        probabilityChart = null;
+    }
+    if (featuresChart) {
+        featuresChart.destroy();
+        featuresChart = null;
+    }
+    
+    const probabilityCtx = document.getElementById('probabilityChart');
+    const featuresCtx = document.getElementById('featuresChart');
+
+    if (!probabilityCtx || !featuresCtx) {
+        console.warn('⚠️ Chart canvases not found, retrying in 500ms...');
+        setTimeout(initializeCharts, 500);
+        return;
+    }
+
+    try {
+        // Probability Chart (Doughnut)
+        probabilityChart = new Chart(probabilityCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Bullish Probability', 'Bearish Probability'],
+                datasets: [{
+                    data: [50, 50],
+                    backgroundColor: ['#10b981', '#ef4444'],
+                    borderColor: ['#059669', '#dc2626'],
+                    borderWidth: 2,
+                    hoverBorderWidth: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#f8fafc',
+                            font: { size: 12 },
+                            padding: 15,
+                            usePointStyle: true
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Market Direction Probabilities',
+                        color: '#f8fafc',
+                        font: { size: 14, weight: 'bold' }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                        titleColor: '#f8fafc',
+                        bodyColor: '#cbd5e1',
+                        borderColor: '#475569',
+                        borderWidth: 1,
+                        callbacks: {
+                            label: function(context) {
+                                const percentage = context.parsed.toFixed(1);
+                                return `${context.label}: ${percentage}%`;
+                            }
+                        }
+                    }
+                },
+                animation: {
+                    animateRotate: true,
+                    duration: 1000
+                },
+                elements: {
+                    arc: {
+                        borderWidth: 2
+                    }
+                }
+            }
+        });
+
+        // Features Chart (Radar)
+        featuresChart = new Chart(featuresCtx, {
+            type: 'radar',
+            data: {
+                labels: FEATURE_NAMES.map(name => FEATURE_DISPLAY_NAMES[name] || name),
+                datasets: [{
+                    label: 'Current Values',
+                    data: Array(FEATURE_NAMES.length).fill(0.1), // Start with small values instead of 0
+                    backgroundColor: 'rgba(6, 182, 212, 0.2)',
+                    borderColor: '#06b6d4',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#06b6d4',
+                    pointBorderColor: '#0891b2',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { 
+                        display: false 
+                    },
+                    title: {
+                        display: true,
+                        text: 'Technical Indicators Analysis',
+                        color: '#f8fafc',
+                        font: { size: 14, weight: 'bold' }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                        titleColor: '#f8fafc',
+                        bodyColor: '#cbd5e1',
+                        borderColor: '#475569',
+                        borderWidth: 1
+                    }
+                },
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        min: 0,
+                        max: 1,
+                        ticks: { 
+                            display: false,
+                            stepSize: 0.2
+                        },
+                        grid: { 
+                            color: 'rgba(148, 163, 184, 0.3)',
+                            lineWidth: 1
+                        },
+                        angleLines: { 
+                            color: 'rgba(148, 163, 184, 0.3)',
+                            lineWidth: 1
+                        },
+                        pointLabels: {
+                            color: '#cbd5e1',
+                            font: { 
+                                size: 10,
+                                weight: 'normal'
+                            }
+                        }
+                    }
+                },
+                animation: {
+                    duration: 1000,
+                    easing: 'easeInOutQuart'
+                },
+                elements: {
+                    line: {
+                        borderWidth: 2
+                    },
+                    point: {
+                        radius: 4,
+                        hoverRadius: 6
+                    }
+                }
+            }
+        });
+
+        console.log('✅ Charts initialized successfully');
+        
+    } catch (error) {
+        console.error('❌ Failed to initialize charts:', error);
+        // Retry initialization after a longer delay
+        setTimeout(initializeCharts, 2000);
+    }
+}
+
+function updateCharts(result, features) {
+    console.log('📊 Updating charts with data:', { result, features });
+    
+    if (!probabilityChart || !featuresChart) {
+        console.warn('⚠️ Charts not initialized, initializing now...');
+        initializeCharts();
+        // Wait a bit and try updating again
+        setTimeout(() => updateCharts(result, features), 1000);
+        return;
+    }
+    
+    try {
+        // Update probability chart
+        if (result.probabilities) {
+            const probabilities = result.probabilities;
+            const upPercent = Math.round(probabilities.up * 100);
+            const downPercent = Math.round(probabilities.down * 100);
+            
+            probabilityChart.data.datasets[0].data = [upPercent, downPercent];
+            probabilityChart.update('active');
+            console.log('✅ Probability chart updated with:', { upPercent, downPercent });
+            
+        } else if (result.confidence !== undefined) {
+            const isPositive = result.prediction === 1 || result.signal === 'BUY';
+            const upProb = isPositive ? result.confidence : (1 - result.confidence);
+            const downProb = 1 - upProb;
+            const upPercent = Math.round(upProb * 100);
+            const downPercent = Math.round(downProb * 100);
+            
+            probabilityChart.data.datasets[0].data = [upPercent, downPercent];
+            probabilityChart.update('active');
+            console.log('✅ Probability chart updated (from confidence):', { upPercent, downPercent });
+        }
+
+        // Update features chart
+        if (features) {
+            const featureValues = FEATURE_NAMES.map(feature => {
+                let value = features[feature] || 0;
+                
+                // Normalize values to 0-1 range for radar chart
+                switch (feature) {
+                    case 'volume':
+                        value = Math.min(value / 10000000, 1);
+                        break;
+                    case 'RSI_14':
+                        value = Math.max(0, Math.min(value / 100, 1));
+                        break;
+                    case 'ma_7':
+                    case 'ma_21':
+                        value = Math.min(Math.abs(value) / 500, 1);
+                        break;
+                    case 'pct_change':
+                        // Normalize from -0.1 to +0.1 range to 0-1
+                        value = Math.min(Math.max((value + 0.1) / 0.2, 0), 1);
+                        break;
+                    case 'volatility_7':
+                        value = Math.min(value * 3, 1);
+                        break;
+                    case 'momentum_7':
+                    case 'momentum_21':
+                        // Normalize from -5 to +5 range to 0-1
+                        value = Math.min(Math.max((value + 5) / 10, 0), 1);
+                        break;
+                    case 'ma_diff':
+                        // Normalize from -10 to +10 range to 0-1
+                        value = Math.min(Math.max((value + 10) / 20, 0), 1);
+                        break;
+                    case 'vol_ratio_20':
+                        value = Math.min(value / 3, 1);
+                        break;
+                    default:
+                        value = Math.min(Math.max(Math.abs(value), 0), 1);
+                }
+                
+                // Ensure minimum visibility
+                return Math.max(0.05, Math.min(1, value));
+            });
+            
+            featuresChart.data.datasets[0].data = featureValues;
+            featuresChart.update('active');
+            console.log('✅ Technical indicators chart updated:', featureValues);
+        }
+        
+    } catch (error) {
+        console.error('❌ Failed to update charts:', error);
+        // Try reinitializing charts on error
+        setTimeout(initializeCharts, 1000);
+    }
+}
+
+// Enhanced chart visibility check
+function ensureChartsVisible() {
+    const probabilityCanvas = document.getElementById('probabilityChart');
+    const featuresCanvas = document.getElementById('featuresChart');
+    
+    if (probabilityCanvas && featuresCanvas) {
+        // Make sure canvases are visible
+        probabilityCanvas.style.display = 'block';
+        featuresCanvas.style.display = 'block';
+        
+        // Force redraw if charts exist
+        if (probabilityChart) {
+            probabilityChart.resize();
+            probabilityChart.update('none');
+        }
+        if (featuresChart) {
+            featuresChart.resize();
+            featuresChart.update('none');
+        }
+        
+        console.log('✅ Chart visibility ensured');
+    }
+}
+
+// Call this when showing results
+function showResultsState() {
+    setElementDisplay('loadingState', 'none');
+    setElementDisplay('emptyState', 'none');
+    setElementDisplay('errorState', 'none');
+    setElementDisplay('resultsContent', 'block');
+    
+    // Add animation class
+    if (elements.resultsContent) {
+        elements.resultsContent.classList.add('fade-in');
+    }
+    
+    // Ensure charts are visible and properly sized
+    setTimeout(() => {
+        ensureChartsVisible();
+        // Reinitialize charts if they don't exist
+        if (!probabilityChart || !featuresChart) {
+            console.log('📊 Reinitializing charts in results view...');
+            initializeCharts();
+        }
+    }, 100);
+    
+    console.log('📋 Showing results state');
+}
+
+/* Chart functions
 function initializeCharts() {
     console.log('📊 Initializing charts...');
     
@@ -745,7 +1057,7 @@ function updateCharts(result, features) {
     } catch (error) {
         console.error('❌ Failed to update charts:', error);
     }
-}
+} */
 
 // Utility functions
 function handleTickerInput(event) {

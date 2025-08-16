@@ -520,7 +520,16 @@ body {
 }
 
 .chart-container canvas {
-    max-height: 100%;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+#probabilityChart,
+#featuresChart {
+    display: block !important;
+    visibility: visible !important;
 }
 
 .last-update {
