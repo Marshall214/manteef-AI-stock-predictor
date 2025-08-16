@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -9,7 +9,6 @@ import os
 import xgboost as xgb
 from datetime import datetime, timedelta
 import yfinance as yf
-import requests
 from typing import Dict, Optional
 import logging
 import psutil
@@ -102,57 +101,6 @@ except Exception as e:
     logger.error(f"Error loading model: {e}")
     model = None
 
-class FinnhubProvider:
-    """Finnhub API data provider"""
-    
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-        self.base_url = "https://finnhub.io/api/v1"
-        self.session = requests.Session()
-        self.session.headers.update({'X-Finnhub-Token': api_key})
-    
-    def fetch_stock_data(self, ticker: str, days: int = 90) -> dict:
-        """Fetch OHLCV data from Finnhub"""
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
-        
-        # Convert to Unix timestamps
-        start_ts = int(start_date.timestamp())
-        end_ts = int(end_date.timestamp())
-        
-        url = f"{self.base_url}/stock/candle"
-        params = {
-            'symbol': ticker.upper(),
-            'resolution': 'D',  # Daily data
-            'from': start_ts,
-            'to': end_ts
-        }
-        
-        response = self.session.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get('s') != 'ok':
-            raise ValueError(f"No data available for {ticker}")
-            
-        return self.format_data(data, ticker)
-    
-    def format_data(self, raw_data: dict, ticker: str) -> dict:
-        """Convert Finnhub format to pandas DataFrame"""
-        df = pd.DataFrame({
-            'Open': raw_data['o'],
-            'High': raw_data['h'], 
-            'Low': raw_data['l'],
-            'Close': raw_data['c'],
-            'Volume': raw_data['v']
-        }, index=pd.to_datetime(raw_data['t'], unit='s'))
-        
-        return {
-            'data': df,
-            'ticker': ticker,
-            'source': 'finnhub'
-        }
-
 def suggest_similar_tickers(ticker: str) -> list:
     """Suggest similar tickers based on first letter"""
     if not ticker:
@@ -207,110 +155,90 @@ def calculate_rsi(prices: pd.Series, period: int = 14) -> float:
     rsi = 100 - (100 / (1 + rs))
     return float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50.0
 
-def calculate_technical_indicators_finnhub(ticker: str, period_days: int = 90) -> Optional[Dict]:
-    """Calculate indicators using Finnhub data"""
+def get_stock_data(ticker: str, period_days: int = 90) -> dict:
+    """
+    Get stock data using yfinance
+    """
     try:
-        # Initialize Finnhub provider
-        api_key = os.getenv('FINNHUB_API_KEY')
-        if not api_key:
-            raise ValueError("Finnhub API key not configured")
-            
-        provider = FinnhubProvider(api_key)
+        # Clean ticker symbol
+        ticker = ticker.upper().strip()
         
-        # Fetch data
-        result = provider.fetch_stock_data(ticker, period_days)
-        df = result['data']
+        # Create yfinance Ticker object
+        stock = yf.Ticker(ticker)
         
-        if df.empty or len(df) < 30:
-            raise ValueError(f"Insufficient data for {ticker}")
-            
-        # Calculate all indicators (same logic as before)
-        close_prices = df['Close']
-        volumes = df['Volume']
+        # Calculate date range
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=period_days * 2)  # Get extra data to ensure we have enough
         
-        # Calculate indicators
-        pct_change = (close_prices.iloc[-1] - close_prices.iloc[-2]) / close_prices.iloc[-2] if len(close_prices) > 1 else 0.0
-        ma_7 = close_prices.rolling(window=7).mean().iloc[-1] if len(close_prices) >= 7 else close_prices.iloc[-1]
-        ma_21 = close_prices.rolling(window=21).mean().iloc[-1] if len(close_prices) >= 21 else close_prices.iloc[-1]
-        returns = close_prices.pct_change().dropna()
-        volatility_7 = returns.rolling(window=7).std().iloc[-1] if len(returns) >= 7 else returns.std()
-        volatility_7 = volatility_7 if not pd.isna(volatility_7) else 0.01
-        volume = float(volumes.iloc[-1])
-        RSI_14 = calculate_rsi(close_prices, 14)
-        momentum_7 = (close_prices.iloc[-1] - close_prices.iloc[-8]) / close_prices.iloc[-8] if len(close_prices) > 7 else 0.0
-        momentum_21 = (close_prices.iloc[-1] - close_prices.iloc[-22]) / close_prices.iloc[-22] if len(close_prices) > 21 else 0.0
-        ma_diff = ma_7 - ma_21
-        avg_volume_20 = volumes.rolling(window=20).mean().iloc[-1] if len(volumes) >= 20 else volumes.mean()
-        vol_ratio_20 = volume / avg_volume_20 if avg_volume_20 > 0 else 1.0
+        # Get historical data
+        hist_data = stock.history(start=start_date, end=end_date)
         
-        indicators = {
-            'pct_change': float(pct_change),
-            'ma_7': float(ma_7),
-            'ma_21': float(ma_21),
-            'volatility_7': float(volatility_7),
-            'volume': float(volume),
-            'RSI_14': float(RSI_14),
-            'momentum_7': float(momentum_7),
-            'momentum_21': float(momentum_21),
-            'ma_diff': float(ma_diff),
-            'vol_ratio_20': float(vol_ratio_20)
-        }
+        if hist_data.empty:
+            raise ValueError(f"No data found for ticker {ticker}")
+        
+        # Get company info with error handling
+        info = {}
+        try:
+            stock_info = stock.info
+            info = {
+                'ticker': ticker,
+                'current_price': stock_info.get('currentPrice', hist_data['Close'].iloc[-1]),
+                'previous_close': stock_info.get('previousClose', hist_data['Close'].iloc[-2] if len(hist_data) > 1 else hist_data['Close'].iloc[-1]),
+                'market_cap': stock_info.get('marketCap', 'N/A'),
+                'company_name': stock_info.get('longName', stock_info.get('shortName', ticker)),
+                'sector': stock_info.get('sector', 'N/A'),
+                'industry': stock_info.get('industry', 'N/A'),
+                'description': stock_info.get('longBusinessSummary', f"Stock information for {ticker}")
+            }
+        except Exception as e:
+            logger.warning(f"Could not fetch detailed company info for {ticker}: {e}")
+            # Fallback to basic info from historical data
+            info = {
+                'ticker': ticker,
+                'current_price': float(hist_data['Close'].iloc[-1]),
+                'previous_close': float(hist_data['Close'].iloc[-2]) if len(hist_data) > 1 else float(hist_data['Close'].iloc[-1]),
+                'market_cap': 'N/A',
+                'company_name': ticker,
+                'sector': 'N/A',
+                'industry': 'N/A',
+                'description': f"Stock information for {ticker}"
+            }
         
         return {
-            'indicators': indicators,
-            'metadata': {
-                'ticker': ticker.upper(),
-                'current_price': float(close_prices.iloc[-1]),
-                'previous_close': float(close_prices.iloc[-2]) if len(close_prices) > 1 else float(close_prices.iloc[-1]),
-                'data_source': 'finnhub',
-                'data_points': len(df),
-                'date_range': {
-                    'start': df.index[0].strftime('%Y-%m-%d'),
-                    'end': df.index[-1].strftime('%Y-%m-%d')
-                }
-            },
-            'success': True
+            'success': True,
+            'data': hist_data,
+            'info': info,
+            'source': 'yfinance'
         }
         
     except Exception as e:
-        logger.error(f"Finnhub error for {ticker}: {e}")
-        raise e
+        logger.error(f"Error fetching data for {ticker}: {str(e)}")
+        return {
+            'success': False,
+            'error': f"Could not fetch data for {ticker}. Please verify the ticker symbol.",
+            'source': 'yfinance'
+        }
 
-def calculate_technical_indicators_yfinance_fallback(ticker: str, period_days: int = 90) -> Optional[Dict]:
-    """Fallback yfinance implementation"""
+@cache.memoize(timeout=300)
+def calculate_technical_indicators(ticker: str, period_days: int = 90) -> Optional[Dict]:
+    """Calculate technical indicators using yfinance data"""
     try:
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=period_days * 2)
-        stock = yf.Ticker(ticker.upper())
+        # Get stock data
+        result = get_stock_data(ticker, period_days)
         
-        # Verify ticker exists and get info
-        try:
-            info = stock.info
-            if not info or 'regularMarketPrice' not in info:
-                suggestions = suggest_similar_tickers(ticker)
-                return {
-                    'error': f"Invalid ticker symbol: {ticker}",
-                    'suggestions': suggestions,
-                    'help': f"Try: {', '.join(suggestions)}",
-                    'success': False
-                }
-        except Exception as e:
+        if not result['success']:
             suggestions = suggest_similar_tickers(ticker)
             return {
-                'error': f"Could not fetch data for {ticker}. Please verify the ticker symbol.",
+                'error': result['error'],
                 'suggestions': suggestions,
-                'help': f"Popular symbols: {', '.join(suggestions)}",
+                'help': f"Try: {', '.join(suggestions)}",
                 'success': False
             }
-            
-        df = stock.history(start=start_date, end=end_date)
         
-        if df.empty:
-            return {
-                'error': f"No trading data available for {ticker}. This might be a newly listed stock or it might be delisted.",
-                'success': False
-            }
-        if len(df) < 30:
+        df = result['data']
+        
+        # Validate data
+        if df.empty or len(df) < 30:
             available_days = len(df)
             return {
                 'error': f"Not enough trading history for {ticker}. Found {available_days} days, need at least 30. This might be a newly listed stock.",
@@ -318,16 +246,21 @@ def calculate_technical_indicators_yfinance_fallback(ticker: str, period_days: i
                 'success': False
             }
         
+        # Calculate technical indicators
         close_prices = df['Close']
         volumes = df['Volume']
         
-        # Calculate indicators (same as Finnhub)
+        # Basic calculations
         pct_change = (close_prices.iloc[-1] - close_prices.iloc[-2]) / close_prices.iloc[-2] if len(close_prices) > 1 else 0.0
         ma_7 = close_prices.rolling(window=7).mean().iloc[-1] if len(close_prices) >= 7 else close_prices.iloc[-1]
         ma_21 = close_prices.rolling(window=21).mean().iloc[-1] if len(close_prices) >= 21 else close_prices.iloc[-1]
+        
+        # Volatility calculation
         returns = close_prices.pct_change().dropna()
         volatility_7 = returns.rolling(window=7).std().iloc[-1] if len(returns) >= 7 else returns.std()
         volatility_7 = volatility_7 if not pd.isna(volatility_7) else 0.01
+        
+        # Volume and other indicators
         volume = float(volumes.iloc[-1])
         RSI_14 = calculate_rsi(close_prices, 14)
         momentum_7 = (close_prices.iloc[-1] - close_prices.iloc[-8]) / close_prices.iloc[-8] if len(close_prices) > 7 else 0.0
@@ -351,57 +284,33 @@ def calculate_technical_indicators_yfinance_fallback(ticker: str, period_days: i
         
         metadata = {
             'ticker': ticker.upper(),
-            'current_price': float(close_prices.iloc[-1]),
-            'previous_close': float(close_prices.iloc[-2]) if len(close_prices) > 1 else float(close_prices.iloc[-1]),
-            'data_source': 'yfinance_fallback',
+            'current_price': float(result['info']['current_price']),
+            'previous_close': float(result['info']['previous_close']),
+            'data_source': 'yfinance',
             'data_points': len(df),
             'date_range': {
                 'start': df.index[0].strftime('%Y-%m-%d'),
                 'end': df.index[-1].strftime('%Y-%m-%d')
-            }
+            },
+            'company_info': result['info']
         }
         
-        return {
+        final_result = {
             'indicators': indicators,
             'metadata': metadata,
             'success': True
         }
-    except Exception as e:
-        logger.error(f"YFinance fallback error for {ticker}: {e}")
-        return {'error': f"Failed to fetch data for {ticker}: {str(e)}", 'success': False}
-
-@cache.memoize(timeout=300)
-def calculate_technical_indicators_with_fallback(ticker: str, period_days: int = 90) -> Optional[Dict]:
-    """Main function with Finnhub primary + yfinance fallback"""
-    
-    # Try Finnhub first
-    try:
-        result = calculate_technical_indicators_finnhub(ticker, period_days)
-        if result and result.get('success'):
-            return add_market_context(result)
-    except Exception as finnhub_error:
-        logger.warning(f"Finnhub failed for {ticker}: {finnhub_error}")
         
-        # Fallback to yfinance
-        try:
-            logger.info(f"Attempting yfinance fallback for {ticker}")
-            result = calculate_technical_indicators_yfinance_fallback(ticker, period_days)
-            if result and result.get('success'):
-                result['metadata']['fallback_reason'] = str(finnhub_error)
-                return add_market_context(result)
-            else:
-                return result  # Return the error from yfinance
-        except Exception as yf_error:
-            logger.error(f"Both providers failed for {ticker}: Finnhub({finnhub_error}), YFinance({yf_error})")
-            return {
-                'error': f"Unable to fetch data for {ticker}. Both primary and backup data sources failed.",
-                'details': {
-                    'finnhub_error': str(finnhub_error),
-                    'yfinance_error': str(yf_error)
-                },
-                'suggestions': suggest_similar_tickers(ticker),
-                'success': False
-            }
+        return add_market_context(final_result)
+        
+    except Exception as e:
+        logger.error(f"Error calculating indicators for {ticker}: {e}")
+        suggestions = suggest_similar_tickers(ticker)
+        return {
+            'error': f"Failed to fetch data for {ticker}: {str(e)}",
+            'suggestions': suggestions,
+            'success': False
+        }
 
 def validate_ticker(ticker: str) -> bool:
     """Validate ticker format"""
@@ -455,7 +364,12 @@ def log_request_response(response):
     duration = time.time() - request.start_time
     logger.info(f"{request.method} {request.path} - {response.status_code} - {duration:.2f}s")
     
-    # FIXED: Only try to access request.json for appropriate requests
+    # Add CORS headers to all responses
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    
+    # Only try to access request.json for appropriate requests
     if request.method == 'POST' and request.content_type and 'application/json' in request.content_type:
         try:
             if hasattr(request, 'json') and request.json:
@@ -466,11 +380,11 @@ def log_request_response(response):
     
     return response
 
-# ADDED: Explicit OPTIONS handler for all routes
+# Explicit OPTIONS handler for all routes
 @app.before_request
 def handle_preflight():
     if request.method == "OPTIONS":
-        response = jsonify({'status': 'ok'})
+        response = make_response()
         response.headers.add("Access-Control-Allow-Origin", "*")
         response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization,Accept")
         response.headers.add('Access-Control-Allow-Methods', "GET,POST,OPTIONS")
@@ -484,10 +398,10 @@ def health_check():
         'status': 'healthy',
         'model_loaded': model is not None,
         'timestamp': datetime.now().isoformat(),
-        'version': '3.0.0',
+        'version': '3.1.0',
         'environment': os.getenv('FLASK_ENV', 'development'),
-        'features': ['manual_prediction', 'ticker_prediction', 'ticker_info', 'finnhub_integration'],
-        'data_sources': ['finnhub_primary', 'yfinance_fallback'],
+        'features': ['manual_prediction', 'ticker_prediction', 'ticker_info', 'yfinance_integration'],
+        'data_sources': ['yfinance_primary'],
         'market_open': is_market_open(),
         'cors_enabled': True
     })
@@ -497,7 +411,11 @@ def health_check():
 def predict():
     """Prediction with manual feature input"""
     if request.method == 'OPTIONS':
-        return jsonify({'status': 'ok'}), 200
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
         
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 500
@@ -520,9 +438,13 @@ def predict():
 @app.route('/predict-ticker', methods=['POST', 'OPTIONS'])
 @limiter.limit("20 per minute")
 def predict_ticker():
-    """Enhanced ticker prediction with Finnhub primary"""
+    """Ticker prediction using yfinance"""
     if request.method == 'OPTIONS':
-        return jsonify({'status': 'ok'}), 200
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
         
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 500
@@ -541,43 +463,54 @@ def predict_ticker():
                 'help': f"Try: {', '.join(suggestions)}"
             }), 400
             
-        # Use new function with fallback
-        result = calculate_technical_indicators_with_fallback(ticker)
+        # Calculate technical indicators
+        result = calculate_technical_indicators(ticker)
         
         if not result.get('success'):
-            return jsonify({
+            response = make_response(jsonify({
                 'error': result.get('error', 'Unknown error'),
                 'suggestions': result.get('suggestions', []),
                 'help': result.get('help', 'Please try a different ticker')
-            }), 400
+            }))
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            return response, 400
             
-        # Rest of existing prediction logic
+        # Make prediction using technical indicators
         df = pd.DataFrame([result['indicators']])[feature_names] 
-        response, status = make_prediction(df, result['indicators'])
+        prediction_response, status = make_prediction(df, result['indicators'])
         
         if status == 200:
-            response.update({
+            prediction_response.update({
                 'ticker_info': result['metadata'],
                 'technical_indicators': result['indicators']
             })
-            
-        return jsonify(response), status
+        
+        response = make_response(jsonify(prediction_response))
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response, status
         
     except Exception as e:
         logger.error(f"Ticker prediction error: {e}")
-        return jsonify({'error': f'Ticker prediction failed: {str(e)}'}), 500
+        error_response = make_response(jsonify({'error': f'Ticker prediction failed: {str(e)}'}))
+        error_response.headers.add('Access-Control-Allow-Origin', '*')
+        return error_response, 500
 
 @app.route('/ticker-info', methods=['POST', 'OPTIONS'])
 @limiter.limit("30 per minute")
 def get_ticker_info():
     """Get ticker information and technical indicators"""
     if request.method == 'OPTIONS':
-        return jsonify({'status': 'ok'}), 200
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
         
     try:
         data = request.json
         if not data or 'ticker' not in data:
             return jsonify({'error': 'Ticker symbol required'}), 400
+            
         ticker = data['ticker'].strip().upper()
         if not validate_ticker(ticker):
             suggestions = suggest_similar_tickers(ticker)
@@ -585,20 +518,30 @@ def get_ticker_info():
                 'error': 'Invalid ticker format',
                 'suggestions': suggestions
             }), 400
-        result = calculate_technical_indicators_with_fallback(ticker)
+            
+        result = calculate_technical_indicators(ticker)
+        
         if not result.get('success'):
-            return jsonify({
+            response = make_response(jsonify({
                 'error': result.get('error', 'Unknown error'),
                 'suggestions': result.get('suggestions', [])
-            }), 400
-        return jsonify({
+            }))
+            response.headers.add('Access-Control-Allow-Origin', '*')
+            return response, 400
+        
+        response = make_response(jsonify({
             'ticker_info': result['metadata'],
             'technical_indicators': result['indicators'],
             'timestamp': datetime.now().isoformat()
-        })
+        }))
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response, 200
+        
     except Exception as e:
         logger.error(f"Ticker info error: {e}")
-        return jsonify({'error': f'Failed to get ticker info: {str(e)}'}), 500
+        error_response = make_response(jsonify({'error': f'Failed to get ticker info: {str(e)}'}))
+        error_response.headers.add('Access-Control-Allow-Origin', '*')
+        return error_response, 500
 
 @app.route('/features', methods=['GET'])
 def get_expected_features():
@@ -626,9 +569,9 @@ def model_info():
             'feature_count': len(feature_names),
             'features': feature_names,
             'data_sources': {
-                'primary': 'Finnhub API',
-                'fallback': 'Yahoo Finance',
-                'finnhub_configured': bool(os.getenv('FINNHUB_API_KEY'))
+                'primary': 'Yahoo Finance (yfinance)',
+                'fallback': 'None (yfinance is primary and only source)',
+                'yfinance_available': True
             },
             'key_parameters': {}
         }
@@ -674,7 +617,7 @@ def ratelimit_handler(e):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("FLASK_ENV") != "production"
-    logger.info("🚀 Starting Enhanced Manteef Stock Predictor API v3.0...")
+    logger.info("🚀 Starting Enhanced Manteef Stock Predictor API v3.1...")
     logger.info("📡 Available endpoints:")
     logger.info("   GET  /           - Health check")
     logger.info("   POST /predict    - Make prediction (manual input)")
@@ -682,8 +625,8 @@ if __name__ == "__main__":
     logger.info("   POST /ticker-info - Get ticker technical indicators")
     logger.info("   GET  /features   - Get expected features")
     logger.info("   GET  /model-info - Get model information")
-    logger.info(f" Finnhub API configured: {bool(os.getenv('FINNHUB_API_KEY'))}")
-    logger.info(f"Running on port {port}")
+    logger.info("📊 Data Source: Yahoo Finance (yfinance) - No API key required")
+    logger.info(f"🌐 Running on port {port}")
     logger.info("✅ CORS enabled for all origins")
     logger.info("✅ OPTIONS requests handled")
     app.run(debug=debug, host="0.0.0.0", port=port)
