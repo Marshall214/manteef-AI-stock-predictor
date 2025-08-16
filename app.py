@@ -38,7 +38,7 @@ limiter = Limiter(
     default_limits=["200 per day", "50 per hour"]
 )
 
-# CORS configuration - Enhanced
+# CORS configuration - FIXED: Use ONLY Flask-CORS, no manual headers
 CORS(app, resources={
     r"/*": {
         "origins": [
@@ -359,15 +359,11 @@ def make_prediction(df: pd.DataFrame, input_data: dict) -> tuple:
 def log_request_info():
     request.start_time = time.time()
 
+# FIXED: Remove manual CORS headers from @app.after_request
 @app.after_request
 def log_request_response(response):
     duration = time.time() - request.start_time
     logger.info(f"{request.method} {request.path} - {response.status_code} - {duration:.2f}s")
-    
-    # Add CORS headers to all responses
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
     
     # Only try to access request.json for appropriate requests
     if request.method == 'POST' and request.content_type and 'application/json' in request.content_type:
@@ -380,15 +376,7 @@ def log_request_response(response):
     
     return response
 
-# Explicit OPTIONS handler for all routes
-@app.before_request
-def handle_preflight():
-    if request.method == "OPTIONS":
-        response = make_response()
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization,Accept")
-        response.headers.add('Access-Control-Allow-Methods', "GET,POST,OPTIONS")
-        return response
+# REMOVED: Manual preflight handler - Flask-CORS handles this automatically
 
 # API Endpoints
 @app.route('/', methods=['GET'])
@@ -406,17 +394,10 @@ def health_check():
         'cors_enabled': True
     })
 
-@app.route('/predict', methods=['POST', 'OPTIONS'])
+@app.route('/predict', methods=['POST'])
 @limiter.limit("30 per minute")
 def predict():
     """Prediction with manual feature input"""
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        return response
-        
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 500
     try:
@@ -435,17 +416,10 @@ def predict():
         logger.error(f"Prediction error: {e}")
         return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
 
-@app.route('/predict-ticker', methods=['POST', 'OPTIONS'])
+@app.route('/predict-ticker', methods=['POST'])
 @limiter.limit("20 per minute")
 def predict_ticker():
     """Ticker prediction using yfinance"""
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        return response
-        
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 500
         
@@ -467,13 +441,11 @@ def predict_ticker():
         result = calculate_technical_indicators(ticker)
         
         if not result.get('success'):
-            response = make_response(jsonify({
+            return jsonify({
                 'error': result.get('error', 'Unknown error'),
                 'suggestions': result.get('suggestions', []),
                 'help': result.get('help', 'Please try a different ticker')
-            }))
-            response.headers.add('Access-Control-Allow-Origin', '*')
-            return response, 400
+            }), 400
             
         # Make prediction using technical indicators
         df = pd.DataFrame([result['indicators']])[feature_names] 
@@ -485,27 +457,16 @@ def predict_ticker():
                 'technical_indicators': result['indicators']
             })
         
-        response = make_response(jsonify(prediction_response))
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        return response, status
+        return jsonify(prediction_response), status
         
     except Exception as e:
         logger.error(f"Ticker prediction error: {e}")
-        error_response = make_response(jsonify({'error': f'Ticker prediction failed: {str(e)}'}))
-        error_response.headers.add('Access-Control-Allow-Origin', '*')
-        return error_response, 500
+        return jsonify({'error': f'Ticker prediction failed: {str(e)}'}), 500
 
-@app.route('/ticker-info', methods=['POST', 'OPTIONS'])
+@app.route('/ticker-info', methods=['POST'])
 @limiter.limit("30 per minute")
 def get_ticker_info():
     """Get ticker information and technical indicators"""
-    if request.method == 'OPTIONS':
-        response = make_response()
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        return response
-        
     try:
         data = request.json
         if not data or 'ticker' not in data:
@@ -522,26 +483,20 @@ def get_ticker_info():
         result = calculate_technical_indicators(ticker)
         
         if not result.get('success'):
-            response = make_response(jsonify({
+            return jsonify({
                 'error': result.get('error', 'Unknown error'),
                 'suggestions': result.get('suggestions', [])
-            }))
-            response.headers.add('Access-Control-Allow-Origin', '*')
-            return response, 400
+            }), 400
         
-        response = make_response(jsonify({
+        return jsonify({
             'ticker_info': result['metadata'],
             'technical_indicators': result['indicators'],
             'timestamp': datetime.now().isoformat()
-        }))
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        return response, 200
+        }), 200
         
     except Exception as e:
         logger.error(f"Ticker info error: {e}")
-        error_response = make_response(jsonify({'error': f'Failed to get ticker info: {str(e)}'}))
-        error_response.headers.add('Access-Control-Allow-Origin', '*')
-        return error_response, 500
+        return jsonify({'error': f'Failed to get ticker info: {str(e)}'}), 500
 
 @app.route('/features', methods=['GET'])
 def get_expected_features():
