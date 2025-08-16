@@ -1,6 +1,6 @@
 // --- Configuration ---
-const API_BASE_URL = window.location.hostname === 'localhost'
-    ? 'http://localhost:5000'
+const API_BASE_URL = window.location.hostname === 'localhost' 
+    ? 'http://localhost:5000' 
     : 'https://manteef-ai-stock-predictor-predictor.up.railway.app';
 
 // --- Elements ---
@@ -12,21 +12,17 @@ const elements = {
     emptyState: document.getElementById('emptyState'),
     errorState: document.getElementById('errorState'),
     errorMessage: document.getElementById('errorMessage'),
-    errorSuggestions: document.getElementById('errorSuggestions'),
-    suggestedTickers: document.getElementById('suggestedTickers'),
     lastUpdate: document.getElementById('lastUpdate'),
     apiStatus: document.querySelector('.api-status'),
+    signalText: document.getElementById('signalText'),
+    confidenceText: document.getElementById('confidenceText'),
+    signalStrengthText: document.getElementById('signalStrengthText'),
+    indicatorsTable: document.getElementById('indicatorsTable'),
+    dateRangeText: document.getElementById('dateRangeText'),
 };
 
 // --- Feature list ---
 let FEATURE_NAMES = [];
-
-// --- Charts ---
-let probabilityChart = null;
-let featuresChart = null;
-
-// --- Current mode ---
-let currentMode = 'ticker';
 
 // --- Initialize ---
 async function init() {
@@ -46,7 +42,7 @@ async function fetchFeatures() {
 }
 
 // --- Ticker Suggestions ---
-elements.tickerInput?.addEventListener('input', handleTickerInput);
+elements.tickerInput.addEventListener('input', handleTickerInput);
 
 async function handleTickerInput(event) {
     const query = event.target.value.toUpperCase().replace(/[^A-Z]/g, '');
@@ -57,8 +53,7 @@ async function handleTickerInput(event) {
     try {
         const res = await fetch(`${API_BASE_URL}/tickers?q=${query}`);
         const data = await res.json();
-        const tickers = data.tickers || [];
-        tickers.length ? showTickerSuggestions(tickers) : hideSuggestions();
+        showTickerSuggestions(data.tickers || []);
     } catch (err) {
         console.error('❌ Error fetching tickers:', err);
         hideSuggestions();
@@ -66,15 +61,17 @@ async function handleTickerInput(event) {
 }
 
 function showTickerSuggestions(tickers) {
+    if (!tickers || tickers.length === 0) return hideSuggestions();
+
     elements.tickerSuggestions.innerHTML = tickers.map(t => `
         <div class="suggestion-item" data-ticker="${t}">${t}</div>
     `).join('');
 
     elements.tickerSuggestions.querySelectorAll('.suggestion-item')
-        .forEach(item => item.addEventListener('click', function () {
+        .forEach(item => item.addEventListener('click', function() {
             elements.tickerInput.value = this.dataset.ticker;
             hideSuggestions();
-            predictTicker(this.dataset.ticker);
+            elements.tickerInput.focus();
         }));
 
     elements.tickerSuggestions.classList.remove('hidden');
@@ -94,7 +91,7 @@ async function predictTicker(ticker) {
         const res = await fetch(`${API_BASE_URL}/predict`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ticker: ticker.toUpperCase() })
+            body: JSON.stringify({ ticker })
         });
 
         const data = await res.json();
@@ -112,17 +109,27 @@ async function predictTicker(ticker) {
 // --- Display Results ---
 function displayResults(data) {
     showResultsState();
-    try {
-        document.getElementById('signalText').textContent = data.signal;
-        document.getElementById('confidenceText').textContent = `Confidence: ${data.confidence}`;
-        updateLastUpdate();
-        // TODO: Add chart updates here using data.probabilities
-    } catch (err) {
-        console.error('❌ Error updating results:', err);
+
+    // Prediction signal
+    elements.signalText.textContent = data.signal;
+    elements.confidenceText.textContent = `Confidence: ${data.confidence}`;
+    elements.signalStrengthText.textContent = `Strength: ${data.signal_strength}`;
+
+    // Date range
+    elements.dateRangeText.textContent = `Data Range: ${data.date_range.start} → ${data.date_range.end}`;
+
+    // Technical indicators table
+    if (data.features) {
+        let tableRows = Object.entries(data.features)
+            .map(([key, val]) => `<tr><td>${key}</td><td>${val.toFixed(3)}</td></tr>`)
+            .join('');
+        elements.indicatorsTable.innerHTML = tableRows;
     }
+
+    updateLastUpdate();
 }
 
-// --- UI States ---
+// --- States ---
 function showLoadingState() {
     elements.loadingState.style.display = 'flex';
     elements.emptyState.style.display = 'none';
@@ -151,7 +158,8 @@ async function checkAPIStatus() {
         const res = await fetch(`${API_BASE_URL}/`);
         const data = await res.json();
         elements.apiStatus.querySelector('.status-dot').classList.add('connected');
-        elements.apiStatus.querySelector('.status-text').textContent = `Connected • v${data.version}`;
+        elements.apiStatus.querySelector('.status-text').textContent =
+            `Connected • v${data.version}`;
     } catch (err) {
         elements.apiStatus.querySelector('.status-dot').classList.remove('connected');
         elements.apiStatus.querySelector('.status-text').textContent = 'Offline';

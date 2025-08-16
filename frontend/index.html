@@ -3,109 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock Predictor CSV</title>
+    <title>Stock Predictor</title>
     <link rel="stylesheet" href="styles.css">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .hidden { display: none; }
+        .api-status { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; background: red; }
+        .status-dot.connected { background: green; }
+        #tickerSuggestions { border: 1px solid #ccc; max-height: 150px; overflow-y: auto; position: absolute; background: #fff; z-index: 10; width: 200px; }
+        .suggestion-item { padding: 5px; cursor: pointer; }
+        .suggestion-item:hover { background-color: #f0f0f0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        table, th, td { border: 1px solid #ccc; }
+        th, td { padding: 6px; text-align: center; }
+        .results-section { margin-top: 20px; }
+        .state { padding: 10px; margin-top: 10px; border: 1px solid #ccc; }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1>Stock Predictor</h1>
-            <p>Predict stock movement using CSV-based historical data and XGBoost model.</p>
-            <div class="api-status" id="apiStatus">
-                <span class="status-dot"></span>
-                <span class="status-text">Checking API...</span>
-            </div>
-        </div>
 
-        <!-- Main Content -->
-        <div class="main-content">
-            <!-- Prediction Panel -->
-            <div class="prediction-panel">
-                <div class="mode-selector">
-                    <div class="mode-option active" onclick="switchMode('ticker')">Ticker Mode</div>
-                    <div class="mode-option" onclick="switchMode('manual')">Manual Mode</div>
-                </div>
+    <h1>Stock Predictor</h1>
 
-                <!-- Ticker Input -->
-                <div id="tickerMode" class="input-section">
-                    <div class="section-title">Enter Stock Ticker</div>
-                    <div class="ticker-input-group">
-                        <div class="ticker-input-container">
-                            <input type="text" id="tickerInput" class="ticker-input" placeholder="e.g., AAPL" oninput="handleTickerInput(event)">
-                            <div class="ticker-suggestions hidden" id="tickerSuggestions"></div>
-                        </div>
-                        <button class="btn btn-primary" onclick="submitTickerPrediction()">
-                            <span>Predict</span>
-                            <div class="btn-loader"></div>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Manual Input -->
-                <div id="manualMode" class="input-section hidden">
-                    <div class="section-title">Enter Technical Indicators</div>
-                    <div class="input-grid" id="manualInputs">
-                        <!-- Feature inputs will be dynamically inserted by JS -->
-                    </div>
-                    <div class="button-group">
-                        <button class="btn btn-primary" onclick="submitManualPrediction()">
-                            <span>Predict</span>
-                            <div class="btn-loader"></div>
-                        </button>
-                        <button class="btn btn-secondary" onclick="fillSampleData()">Fill Sample Data</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Results Panel -->
-            <div class="results-panel">
-                <div id="loadingState" class="state-container loading-state hidden">
-                    <i>⏳</i>
-                    <div>Loading...</div>
-                </div>
-
-                <div id="emptyState" class="state-container empty-state">
-                    <i>📭</i>
-                    <div>No results yet</div>
-                </div>
-
-                <div id="errorState" class="state-container error-state hidden">
-                    <i>⚠️</i>
-                    <div id="errorMessage"></div>
-                    <div class="error-suggestions hidden" id="errorSuggestions">
-                        Suggested tickers: <div class="suggested-tickers" id="suggestedTickers"></div>
-                    </div>
-                </div>
-
-                <div id="resultsContent" class="hidden">
-                    <div class="prediction-card" id="signalCard">
-                        <div class="signal-display">
-                            <span id="signalIcon">📈</span>
-                            <span id="signalText">BUY</span>
-                        </div>
-                        <div class="confidence-bar">
-                            <div class="confidence-fill" id="confidenceFill"></div>
-                        </div>
-                        <div class="confidence-text" id="confidenceText"></div>
-                        <div class="strength-badge" id="strengthBadge"></div>
-                    </div>
-
-                    <div class="charts-container">
-                        <div class="chart-container">
-                            <canvas id="probabilityChart"></canvas>
-                        </div>
-                        <div class="chart-container">
-                            <canvas id="featuresChart"></canvas>
-                        </div>
-                    </div>
-
-                    <div class="last-update" id="lastUpdate"></div>
-                </div>
-            </div>
-        </div>
+    <!-- API Status -->
+    <div class="api-status">
+        <div class="status-dot"></div>
+        <span class="status-text">Checking...</span>
     </div>
 
+    <!-- Ticker Input -->
+    <div style="position: relative;">
+        <input type="text" id="tickerInput" placeholder="Enter stock ticker (e.g., AAPL)" autocomplete="off">
+        <div id="tickerSuggestions" class="hidden"></div>
+    </div>
+    <button onclick="predictTicker()">Predict</button>
+
+    <!-- Loading State -->
+    <div id="loadingState" class="state hidden">Loading prediction...</div>
+
+    <!-- Error State -->
+    <div id="errorState" class="state hidden">
+        <span id="errorMessage"></span>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="state hidden">Please enter a ticker to get predictions.</div>
+
+    <!-- Results -->
+    <div id="resultsContent" class="results-section hidden">
+        <h2>Prediction Results</h2>
+        <p><strong>Signal:</strong> <span id="signalText"></span></p>
+        <p><strong>Confidence:</strong> <span id="confidenceText"></span></p>
+        <p><strong>Signal Strength:</strong> <span id="signalStrengthText"></span></p>
+        <p><strong>Date Range:</strong> <span id="dateRangeText"></span></p>
+
+        <h3>Technical Indicators</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Indicator</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody id="indicatorsTable">
+                <!-- Filled dynamically by JS -->
+            </tbody>
+        </table>
+
+        <p id="lastUpdate"></p>
+    </div>
+
+    <!-- Scripts -->
     <script src="script.js"></script>
+
 </body>
 </html>

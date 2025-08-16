@@ -6,6 +6,7 @@ import numpy as np
 import os
 import xgboost as xgb
 from datetime import datetime
+import logging
 
 app = Flask(__name__)
 
@@ -26,11 +27,11 @@ CORS(app, resources={
     }
 })
 
-# Paths
+# --- Paths ---
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "model", "xgb_stock_model.json")
 DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "all_stocks_5yr.csv")
 
-# Load XGBoost model
+# --- Load XGBoost model ---
 try:
     model = xgb.XGBClassifier()
     model.load_model(MODEL_PATH)
@@ -39,12 +40,12 @@ except Exception as e:
     print(f"❌ Error loading model: {e}")
     model = None
 
-# Load CSV dataset
+# --- Load CSV dataset ---
 df = pd.read_csv(DATA_PATH)
 df['date'] = pd.to_datetime(df['date'])
 df = df.sort_values(['Name', 'date']).reset_index(drop=True)
 
-# Feature list
+# --- Feature list ---
 feature_cols = ['pct_change', 'ma_7', 'ma_21', 'volatility_7', 'volume',
                 'RSI_14', 'momentum_7', 'momentum_21', 'ma_diff', 'vol_ratio_20']
 
@@ -108,19 +109,31 @@ def predict():
         return jsonify({'error': f'Ticker {ticker} not found'}), 404
 
     stock_df = compute_technical_indicators(stock_df)
-    latest_features = stock_df.iloc[-1][feature_cols].values.reshape(1, -1)
+    latest_features_dict = stock_df.iloc[-1][feature_cols].to_dict()
 
+    # Ensure correct feature order
+    latest_features = np.array([[latest_features_dict[f] for f in feature_cols]])
+
+    # Prediction
     pred_proba = model.predict_proba(latest_features)[0]
     pred_class = int(pred_proba[1] > 0.5)
     confidence = float(max(pred_proba))
     signal = 'BUY' if pred_class == 1 else 'SELL'
     strength = 'STRONG' if confidence >= 0.7 else ('MODERATE' if confidence >= 0.6 else 'WEAK')
 
+    # Logging
+    logging.info(f"Ticker: {ticker}, Signal: {signal}, Confidence: {confidence:.3f}")
+
     return jsonify({
         'prediction': pred_class,
         'signal': signal,
         'signal_strength': strength,
         'confidence': round(confidence, 3),
+        'features': latest_features_dict,
+        'date_range': {
+            'start': stock_df['date'].min().strftime('%Y-%m-%d'),
+            'end': stock_df['date'].max().strftime('%Y-%m-%d')
+        },
         'probabilities': {
             'down': round(float(pred_proba[0]), 3),
             'up': round(float(pred_proba[1]), 3)
@@ -134,20 +147,9 @@ def get_features():
 
 # --- Run App ---
 if __name__ == "__main__":
-    import logging
-
     logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger("StockPredictorCSV")
-
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("FLASK_ENV") != "production"
-
-    logger.info("🚀 Starting CSV-Based Stock Predictor API v1.0...")
-    logger.info(f"📡 Endpoints available:")
-    logger.info("   GET  /            - Health check")
-    logger.info("   GET  /tickers     - Search tickers for dropdown")
-    logger.info("   POST /predict     - Predict latest stock movement")
-    logger.info("   GET  /features    - List model features")
-    logger.info(f"🌐 Running on port {port}")
-
+    logging.info("🚀 Starting CSV-Based Stock Predictor API v1.0...")
+    logging.info(f"🌐 Running on port {port}")
     app.run(debug=debug, host="0.0.0.0", port=port)
