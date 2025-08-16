@@ -65,6 +65,30 @@
                                 <i class="fas fa-eraser"></i> Clear
                             </button>
                         </div>
+                        <div id="summaryContent" style="color: #cbd5e1; line-height: 1.6;">
+                            <p>Advanced machine learning analysis combining multiple technical indicators to provide comprehensive market direction prediction.</p>
+                        </div>
+
+                        <!-- Key Metrics -->
+                        <div id="keyMetrics" class="key-metrics" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 20px;">
+                            <div class="key-metric" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 15px; text-align: center; border: 1px solid rgba(148, 163, 184, 0.1);">
+                                <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 5px;">Model Accuracy</div>
+                                <div style="color: #10b981; font-size: 1.2rem; font-weight: 600;" id="modelAccuracy">92.5%</div>
+                            </div>
+                            <div class="key-metric" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 15px; text-align: center; border: 1px solid rgba(148, 163, 184, 0.1);">
+                                <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 5px;">Prediction Score</div>
+                                <div style="color: #3b82f6; font-size: 1.2rem; font-weight: 600;" id="predictionScore">8.7/10</div>
+                            </div>
+                            <div class="key-metric" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 15px; text-align: center; border: 1px solid rgba(148, 163, 184, 0.1);">
+                                <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 5px;">Market Volatility</div>
+                                <div style="color: #f59e0b; font-size: 1.2rem; font-weight: 600;" id="marketVolatility">MODERATE</div>
+                            </div>
+                        </div>
+
+                        <!-- Last Update -->
+                        <div id="lastUpdate" class="last-update">
+                            Last updated: --:--:--
+                        </div>
                     </div>
 
                     <!-- Manual Input Mode -->
@@ -263,35 +287,13 @@
                             <i class="fas fa-lightbulb"></i>
                             AI Analysis Summary
                         </h4>
-                        <div id="summaryContent" style="color: #cbd5e1; line-height: 1.6;">
-                            <p>Advanced machine learning analysis combining multiple technical indicators to provide comprehensive market direction prediction.</p>
-                        </div>
-                    </div>
-
-                    <!-- Key Metrics -->
-                    <div id="keyMetrics" class="key-metrics" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 20px;">
-                        <div class="key-metric" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 15px; text-align: center; border: 1px solid rgba(148, 163, 184, 0.1);">
-                            <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 5px;">Model Accuracy</div>
-                            <div style="color: #10b981; font-size: 1.2rem; font-weight: 600;" id="modelAccuracy">92.5%</div>
-                        </div>
-                        <div class="key-metric" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 15px; text-align: center; border: 1px solid rgba(148, 163, 184, 0.1);">
-                            <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 5px;">Prediction Score</div>
-                            <div style="color: #3b82f6; font-size: 1.2rem; font-weight: 600;" id="predictionScore">8.7/10</div>
-                        </div>
-                        <div class="key-metric" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 15px; text-align: center; border: 1px solid rgba(148, 163, 184, 0.1);">
-                            <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 5px;">Market Volatility</div>
-                            <div style="color: #f59e0b; font-size: 1.2rem; font-weight: 600;" id="marketVolatility">MODERATE</div>
-                        </div>
-                    </div>
-
-                    <!-- Last Update -->
-                    <div id="lastUpdate" class="last-update">
-                        Last updated: --:--:--
+                        <div id="summaryContent"></div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
     <script src="script.js"></script>
 </body>
 </html>

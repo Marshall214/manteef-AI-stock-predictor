@@ -545,7 +545,10 @@ body {
     display: none !important;
 }
 
-/* Mobile Responsiveness */
+.trend-up { color: #10b981; }
+.trend-down { color: #ef4444; }
+.trend-neutral { color: #94a3b8; }
+
 @media (max-width: 768px) {
     .charts-container {
         grid-template-columns: 1fr;
@@ -574,32 +577,4 @@ body {
     .prediction-panel, .results-panel {
         padding: 20px;
     }
-}
-
-/* Additional Enhancement Styles */
-.pulse {
-    animation: pulse 2s infinite;
-}
-
-.trend-indicator {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font-size: 0.8rem;
-}
-
-.trend-up { color: #10b981; }
-.trend-down { color: #ef4444; }
-.trend-neutral { color: #94a3b8; }
-
-.data-source-badge {
-    display: inline-block;
-    background: rgba(6, 182, 212, 0.1);
-    border: 1px solid rgba(6, 182, 212, 0.3);
-    color: #06b6d4;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
 }
