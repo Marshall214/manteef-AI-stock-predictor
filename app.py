@@ -108,10 +108,9 @@ def predict():
     if stock_df.empty:
         return jsonify({'error': f'Ticker {ticker} not found'}), 404
 
+    # Compute indicators
     stock_df = compute_technical_indicators(stock_df)
     latest_features_dict = stock_df.iloc[-1][feature_cols].to_dict()
-
-    # Ensure correct feature order
     latest_features = np.array([[latest_features_dict[f] for f in feature_cols]])
 
     # Prediction
@@ -120,6 +119,11 @@ def predict():
     confidence = float(max(pred_proba))
     signal = 'BUY' if pred_class == 1 else 'SELL'
     strength = 'STRONG' if confidence >= 0.7 else ('MODERATE' if confidence >= 0.6 else 'WEAK')
+
+    # Get mini price trend (last 30 days)
+    mini_trend = stock_df.tail(30).sort_values('date')
+    trend_prices = mini_trend['close'].tolist()
+    trend_dates = mini_trend['date'].dt.strftime('%Y-%m-%d').tolist()
 
     # Logging
     logging.info(f"Ticker: {ticker}, Signal: {signal}, Confidence: {confidence:.3f}")
@@ -134,10 +138,15 @@ def predict():
             'start': stock_df['date'].min().strftime('%Y-%m-%d'),
             'end': stock_df['date'].max().strftime('%Y-%m-%d')
         },
+        'mini_trend': {
+            'prices': trend_prices,
+            'dates': trend_dates
+        },
         'probabilities': {
             'down': round(float(pred_proba[0]), 3),
             'up': round(float(pred_proba[1]), 3)
         },
+        'model_used': type(model).__name__,
         'timestamp': datetime.now().isoformat()
     })
 

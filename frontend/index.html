@@ -3,78 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock Predictor</title>
+    <title>Manteef AI Stock Predictor</title>
     <link rel="stylesheet" href="styles.css">
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .hidden { display: none; }
-        .api-status { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-        .status-dot { width: 12px; height: 12px; border-radius: 50%; background: red; }
-        .status-dot.connected { background: green; }
-        #tickerSuggestions { border: 1px solid #ccc; max-height: 150px; overflow-y: auto; position: absolute; background: #fff; z-index: 10; width: 200px; }
-        .suggestion-item { padding: 5px; cursor: pointer; }
-        .suggestion-item:hover { background-color: #f0f0f0; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        table, th, td { border: 1px solid #ccc; }
-        th, td { padding: 6px; text-align: center; }
-        .results-section { margin-top: 20px; }
-        .state { padding: 10px; margin-top: 10px; border: 1px solid #ccc; }
-    </style>
+    <!-- Chart.js CDN for mini trend chart -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+    <div class="container">
 
-    <h1>Stock Predictor</h1>
+        <!-- Header -->
+        <header class="header">
+            <h1>Manteef AI Stock Predictor</h1>
+            <p class="model-info">Model: <span id="modelName">XGBRegressor</span></p>
+        </header>
 
-    <!-- API Status -->
-    <div class="api-status">
-        <div class="status-dot"></div>
-        <span class="status-text">Checking...</span>
-    </div>
+        <!-- API Status -->
+        <div class="api-status">
+            <div class="status-dot"></div>
+            <span class="status-text">Checking API...</span>
+        </div>
 
-    <!-- Ticker Input -->
-    <div style="position: relative;">
-        <input type="text" id="tickerInput" placeholder="Enter stock ticker (e.g., AAPL)" autocomplete="off">
-        <div id="tickerSuggestions" class="hidden"></div>
-    </div>
-    <button onclick="predictTicker()">Predict</button>
+        <!-- Ticker Input -->
+        <div class="input-container">
+            <input type="text" id="tickerInput" placeholder="Enter stock ticker (e.g., AAPL)" autocomplete="off">
+            <div id="tickerSuggestions" class="hidden"></div>
+        </div>
 
-    <!-- Loading State -->
-    <div id="loadingState" class="state hidden">Loading prediction...</div>
+        <!-- Buttons -->
+        <div class="buttons">
+            <button class="predict-btn" onclick="handlePredictClick()">Predict</button>
+            <button class="reset-btn" onclick="handleResetClick()">Clear</button>
+        </div>
 
-    <!-- Error State -->
-    <div id="errorState" class="state hidden">
-        <span id="errorMessage"></span>
-    </div>
+        <!-- Loading State -->
+        <div id="loadingState" class="state hidden">
+            <div class="spinner"></div>
+            Loading prediction...
+        </div>
 
-    <!-- Empty State -->
-    <div id="emptyState" class="state hidden">Please enter a ticker to get predictions.</div>
+        <!-- Error State -->
+        <div id="errorState" class="state hidden">
+            <span id="errorMessage"></span>
+        </div>
 
-    <!-- Results -->
-    <div id="resultsContent" class="results-section hidden">
-        <h2>Prediction Results</h2>
-        <p><strong>Signal:</strong> <span id="signalText"></span></p>
-        <p><strong>Confidence:</strong> <span id="confidenceText"></span></p>
-        <p><strong>Signal Strength:</strong> <span id="signalStrengthText"></span></p>
-        <p><strong>Date Range:</strong> <span id="dateRangeText"></span></p>
+        <!-- Empty State -->
+        <div id="emptyState" class="state hidden">Please enter a ticker to get predictions.</div>
 
-        <h3>Technical Indicators</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>Indicator</th>
-                    <th>Value</th>
-                </tr>
-            </thead>
-            <tbody id="indicatorsTable">
-                <!-- Filled dynamically by JS -->
-            </tbody>
-        </table>
+        <!-- Results -->
+        <div id="resultsContent" class="results-section hidden">
+            <!-- Prediction Card -->
+            <div class="card result-card">
+                <h2>Prediction Results</h2>
+                <div class="result-row"><span>Signal:</span> <span id="signalText"></span></div>
+                <div class="result-row"><span>Confidence:</span> <span id="confidenceText"></span></div>
+                <div class="result-row"><span>Signal Strength:</span> <span id="signalStrengthText"></span></div>
+                <div class="result-row"><span>Date Range:</span> <span id="dateRangeText"></span></div>
+                <div class="result-row"><span>Model Used:</span> <span id="modelUsedText">XGBRegressor</span></div>
+            </div>
 
-        <p id="lastUpdate"></p>
+            <!-- Technical Indicators Card -->
+            <div class="card result-card">
+                <h3>Technical Indicators</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Indicator</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody id="indicatorsTable">
+                        <!-- Filled dynamically by JS -->
+                    </tbody>
+                </table>
+                <p id="lastUpdate"></p>
+            </div>
+
+            <!-- Mini Price Trend -->
+            <div class="card result-card">
+                <h3>Mini Price Trend (Last 30 Days)</h3>
+                <canvas id="miniTrendChart" width="400" height="150"></canvas>
+            </div>
+        </div>
+
     </div>
 
     <!-- Scripts -->
+     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="script.js"></script>
-
 </body>
 </html>

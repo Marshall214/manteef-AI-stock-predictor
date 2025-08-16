@@ -1,6 +1,6 @@
 // --- Configuration ---
-const API_BASE_URL = window.location.hostname === 'localhost' 
-    ? 'http://localhost:5000' 
+const API_BASE_URL = window.location.hostname === 'localhost'
+    ? 'http://localhost:5000'
     : 'https://manteef-ai-stock-predictor-predictor.up.railway.app';
 
 // --- Elements ---
@@ -16,18 +16,22 @@ const elements = {
     apiStatus: document.querySelector('.api-status'),
     signalText: document.getElementById('signalText'),
     confidenceText: document.getElementById('confidenceText'),
-    signalStrengthText: document.getElementById('signalStrengthText'),
-    indicatorsTable: document.getElementById('indicatorsTable'),
+    strengthText: document.getElementById('strengthText'),
     dateRangeText: document.getElementById('dateRangeText'),
+    indicatorsTable: document.getElementById('indicatorsTable'),
+    modelName: document.getElementById('modelName'),
+    miniChartContainer: null
 };
 
-// --- Feature list ---
+// --- Feature list (fetched from API) ---
 let FEATURE_NAMES = [];
+let miniChart = null;
 
 // --- Initialize ---
 async function init() {
     await fetchFeatures();
     checkAPIStatus();
+    elements.emptyState.style.display = 'block';
 }
 
 // --- Fetch feature names ---
@@ -36,6 +40,7 @@ async function fetchFeatures() {
         const res = await fetch(`${API_BASE_URL}/features`);
         const data = await res.json();
         FEATURE_NAMES = data.features || [];
+        elements.modelName.textContent = "XGBRegressor"; // Hardcoded from backend
     } catch (err) {
         console.error('❌ Error fetching features:', err);
     }
@@ -110,23 +115,65 @@ async function predictTicker(ticker) {
 function displayResults(data) {
     showResultsState();
 
-    // Prediction signal
+    // Update signals
     elements.signalText.textContent = data.signal;
     elements.confidenceText.textContent = `Confidence: ${data.confidence}`;
-    elements.signalStrengthText.textContent = `Strength: ${data.signal_strength}`;
+    elements.strengthText.textContent = data.signal_strength;
 
-    // Date range
+    // Update date range
     elements.dateRangeText.textContent = `Data Range: ${data.date_range.start} → ${data.date_range.end}`;
 
-    // Technical indicators table
-    if (data.features) {
-        let tableRows = Object.entries(data.features)
-            .map(([key, val]) => `<tr><td>${key}</td><td>${val.toFixed(3)}</td></tr>`)
+    // Update indicators table
+    if (elements.indicatorsTable && data.features) {
+        const rows = Object.entries(data.features)
+            .map(([key, value]) => `<tr><td>${key}</td><td>${Number(value).toFixed(4)}</td></tr>`)
             .join('');
-        elements.indicatorsTable.innerHTML = tableRows;
+        elements.indicatorsTable.innerHTML = rows;
     }
 
+    // Render mini price trend chart
+    renderMiniTrend(data.features);
+
     updateLastUpdate();
+}
+
+// --- Mini Trend Chart ---
+function renderMiniTrend(features) {
+    const labels = Object.keys(features).slice(-30); // Last 30 entries
+    const values = Object.values(features).slice(-30);
+
+    if (!elements.miniChartContainer) {
+        elements.miniChartContainer = document.createElement('canvas');
+        elements.resultsContent.appendChild(elements.miniChartContainer);
+    }
+
+    if (miniChart) {
+        miniChart.destroy();
+    }
+
+    miniChart = new Chart(elements.miniChartContainer, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Price Trend',
+                data: values,
+                borderColor: '#00ff90',
+                backgroundColor: 'rgba(0, 255, 144, 0.2)',
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { display: false },
+                y: { ticks: { color: '#f0f0f0' }, grid: { color: '#333' } }
+            }
+        }
+    });
 }
 
 // --- States ---
@@ -172,8 +219,32 @@ function updateLastUpdate() {
     elements.lastUpdate.textContent = `Last updated: ${now.toLocaleTimeString()}`;
 }
 
-// --- Init app ---
-init();
+// --- Global button handlers ---
+window.handlePredictClick = () => {
+    const ticker = elements.tickerInput.value.toUpperCase();
+    predictTicker(ticker);
+};
 
-// --- Expose for HTML onclick ---
-window.predictTicker = () => predictTicker(elements.tickerInput.value.toUpperCase());
+window.handleResetClick = () => {
+    clearPrediction();
+};
+
+// --- Clear prediction ---
+function clearPrediction() {
+    elements.tickerInput.value = '';
+    hideSuggestions();
+    elements.loadingState.style.display = 'none';
+    elements.resultsContent.style.display = 'none';
+    elements.errorState.style.display = 'none';
+    elements.emptyState.style.display = 'block';
+    elements.lastUpdate.textContent = '';
+    elements.indicatorsTable.innerHTML = '';
+    elements.signalText.textContent = '';
+    elements.confidenceText.textContent = '';
+    elements.strengthText.textContent = '';
+    elements.dateRangeText.textContent = '';
+    if (miniChart) miniChart.destroy();
+}
+
+// --- Initialize app ---
+init();

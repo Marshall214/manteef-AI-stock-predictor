@@ -1,165 +1,229 @@
-/* Reset & Base Styles */
+/* --- Global Styles --- */
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #f0f0f0;
 }
 
 body {
-    background: #f5f6fa;
-    color: #333;
+    background-color: #121212;
+    display: flex;
+    justify-content: center;
     padding: 20px;
 }
 
-/* Header */
-h1 {
-    text-align: center;
-    margin-bottom: 20px;
-    color: #2f3640;
+.container {
+    width: 100%;
+    max-width: 900px;
 }
 
-/* API Status */
+/* --- Header --- */
+.header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.header h1 {
+    font-size: 2rem;
+    color: #00ffe0;
+    margin-bottom: 5px;
+}
+
+.model-info {
+    font-size: 0.9rem;
+    color: #cccccc;
+}
+
+/* --- API Status --- */
 .api-status {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 20px;
+    gap: 8px;
+    margin-bottom: 15px;
+    justify-content: center;
 }
 
 .status-dot {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
-    background: red;
+    background-color: red;
     transition: background 0.3s;
 }
 
 .status-dot.connected {
-    background: green;
+    background-color: #00ff90;
 }
 
-.status-text {
-    font-weight: bold;
+/* --- Input Field --- */
+.input-container {
+    position: relative;
+    text-align: center;
+    margin-bottom: 15px;
 }
 
-/* Ticker Input */
 #tickerInput {
-    width: 100%;
-    max-width: 300px;
-    padding: 10px 12px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
+    width: 80%;
+    max-width: 400px;
+    padding: 12px 15px;
+    border-radius: 8px;
+    border: none;
     outline: none;
-    font-size: 16px;
+    background-color: #1e1e1e;
+    color: #f0f0f0;
+    font-size: 1rem;
 }
 
-#tickerInput:focus {
-    border-color: #00a8ff;
+#tickerInput::placeholder {
+    color: #888;
 }
 
-/* Suggestions Dropdown */
+/* --- Dropdown Suggestions --- */
 #tickerSuggestions {
     position: absolute;
-    background: #fff;
-    width: 100%;
-    max-width: 300px;
-    border: 1px solid #ccc;
-    border-top: none;
-    max-height: 180px;
+    top: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    max-width: 400px;
+    background-color: #1f1f1f;
+    border: 1px solid #333;
+    border-radius: 5px;
+    max-height: 200px;
     overflow-y: auto;
-    z-index: 20;
-    border-radius: 0 0 6px 6px;
+    z-index: 10;
 }
 
 .suggestion-item {
     padding: 8px 12px;
     cursor: pointer;
-    transition: background 0.2s;
 }
 
 .suggestion-item:hover {
-    background: #dcdde1;
+    background-color: #333;
 }
 
-/* Buttons */
-button {
-    margin-top: 10px;
-    padding: 10px 18px;
-    background: #00a8ff;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 16px;
-    transition: background 0.3s;
-}
-
-button:hover {
-    background: #0097e6;
-}
-
-/* States */
-.state {
-    margin-top: 20px;
-    padding: 15px;
-    border-radius: 8px;
+/* --- Buttons --- */
+.buttons {
     text-align: center;
+    margin-bottom: 20px;
+}
+
+button {
+    padding: 10px 20px;
+    margin: 5px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
     font-weight: bold;
+    transition: all 0.3s ease;
 }
 
-#loadingState { background: #fbc531; color: #2f3640; }
-#errorState { background: #e84118; color: #fff; }
-#emptyState { background: #dcdde1; color: #2f3640; }
-
-/* Results Section */
-.results-section {
-    margin-top: 30px;
-    background: #fff;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0px 6px 20px rgba(0,0,0,0.05);
+.predict-btn {
+    background: linear-gradient(45deg, #00ff90, #00cfff);
+    color: #121212;
 }
 
-.results-section h2,
-.results-section h3 {
+.predict-btn:hover {
+    filter: brightness(1.2);
+}
+
+.reset-btn {
+    background: #ff4d4d;
+    color: #fff;
+}
+
+.reset-btn:hover {
+    filter: brightness(1.2);
+}
+
+/* --- State Messages --- */
+.state {
+    text-align: center;
+    padding: 15px;
     margin-bottom: 15px;
-    color: #2f3640;
+    border-radius: 8px;
+    background-color: #1e1e1e;
 }
 
-.results-section p {
-    margin-bottom: 10px;
-    font-size: 16px;
+.hidden {
+    display: none;
 }
 
-/* Indicators Table */
+/* --- Spinner --- */
+.spinner {
+    border: 4px solid #333;
+    border-top: 4px solid #00ff90;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    margin: 0 auto 10px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* --- Results Section --- */
+.results-section {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+}
+
+/* --- Cards --- */
+.card {
+    background-color: #1e1e1e;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 255, 160, 0.2);
+    width: 100%;
+}
+
+.result-card h2, .result-card h3 {
+    color: #00ffe0;
+    margin-bottom: 15px;
+}
+
+.result-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    font-size: 1rem;
+}
+
+/* --- Table --- */
 table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 10px;
 }
 
 th, td {
-    border: 1px solid #ccc;
-    padding: 8px 10px;
+    border: 1px solid #333;
+    padding: 8px;
     text-align: center;
 }
 
 th {
-    background: #00a8ff;
-    color: #fff;
+    background-color: #1a1a1a;
+    color: #00ffe0;
 }
 
-/* Last Update */
-#lastUpdate {
-    margin-top: 15px;
-    font-style: italic;
-    color: #718093;
+/* --- Mini Trend Chart --- */
+canvas {
+    background-color: #121212;
+    border-radius: 8px;
 }
 
-/* Responsive */
-@media (max-width: 500px) {
+/* --- Responsive --- */
+@media (max-width: 600px) {
     #tickerInput, #tickerSuggestions {
-        max-width: 100%;
+        width: 90%;
     }
 }
