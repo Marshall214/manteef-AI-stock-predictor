@@ -41,14 +41,17 @@
                             <i class="fas fa-chart-line"></i> Stock Analysis
                         </div>
                         <div class="ticker-input-group">
-                            <input 
-                                type="text" 
-                                id="tickerInput" 
-                                class="ticker-input" 
-                                placeholder="Enter stock ticker (e.g., AAPL, TSLA, MSFT)"
-                                maxlength="5"
-                                autocomplete="off"
-                            >
+                            <div class="ticker-input-container">
+                                <input 
+                                    type="text" 
+                                    id="tickerInput" 
+                                    class="ticker-input" 
+                                    placeholder="Enter stock ticker (e.g., AAPL, TSLA, MSFT)"
+                                    maxlength="5"
+                                    autocomplete="off"
+                                >
+                                <div id="tickerSuggestions" class="ticker-suggestions hidden"></div>
+                            </div>
                             <button type="button" class="btn btn-secondary" id="tickerInfoBtn">
                                 <i class="fas fa-info-circle"></i> Info
                             </button>
@@ -153,6 +156,10 @@
                         <i class="fas fa-exclamation-triangle"></i>
                         <h3>Analysis Failed</h3>
                         <p id="errorMessage">Something went wrong</p>
+                        <div id="errorSuggestions" class="error-suggestions hidden">
+                            <p><strong>Try these instead:</strong></p>
+                            <div id="suggestedTickers" class="suggested-tickers"></div>
+                        </div>
                         <button class="btn btn-secondary" onclick="resetResults()" style="margin-top: 15px;">
                             <i class="fas fa-redo"></i> Try Again
                         </button>
@@ -180,6 +187,14 @@
                             <div class="info-item">
                                 <div class="info-label">Date Range</div>
                                 <div class="info-value" id="dateRange">3 months</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Data Source</div>
+                                <div class="info-value" id="dataSource">Finnhub</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Market Status</div>
+                                <div class="info-value" id="marketStatus">Open</div>
                             </div>
                         </div>
                     </div>

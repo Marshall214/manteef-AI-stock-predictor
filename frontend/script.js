@@ -26,9 +26,29 @@ const SAMPLE_DATA = {
     }
 };
 
+// Popular tickers for suggestions
+const POPULAR_TICKERS = [
+    { ticker: 'AAPL', name: 'Apple Inc.' },
+    { ticker: 'MSFT', name: 'Microsoft Corp.' },
+    { ticker: 'GOOGL', name: 'Alphabet Inc.' },
+    { ticker: 'TSLA', name: 'Tesla Inc.' },
+    { ticker: 'NVDA', name: 'NVIDIA Corp.' },
+    { ticker: 'AMZN', name: 'Amazon.com Inc.' },
+    { ticker: 'META', name: 'Meta Platforms' },
+    { ticker: 'AMD', name: 'Advanced Micro Devices' },
+    { ticker: 'NFLX', name: 'Netflix Inc.' },
+    { ticker: 'BABA', name: 'Alibaba Group' },
+    { ticker: 'DIS', name: 'The Walt Disney Co.' },
+    { ticker: 'PYPL', name: 'PayPal Holdings' },
+    { ticker: 'INTC', name: 'Intel Corp.' },
+    { ticker: 'CRM', name: 'Salesforce Inc.' },
+    { ticker: 'UBER', name: 'Uber Technologies' }
+];
+
 const elements = {
     form: document.getElementById('predictionForm'),
     tickerInput: document.getElementById('tickerInput'),
+    tickerSuggestions: document.getElementById('tickerSuggestions'),
     tickerInfoBtn: document.getElementById('tickerInfoBtn'),
     predictTickerBtn: document.getElementById('predictTickerBtn'),
     clearTickerBtn: document.getElementById('clearTickerBtn'),
@@ -45,12 +65,16 @@ const elements = {
     resultsContent: document.getElementById('resultsContent'),
     errorState: document.getElementById('errorState'),
     errorMessage: document.getElementById('errorMessage'),
+    errorSuggestions: document.getElementById('errorSuggestions'),
+    suggestedTickers: document.getElementById('suggestedTickers'),
     tickerInfo: document.getElementById('tickerInfo'),
     tickerSymbol: document.getElementById('tickerSymbol'),
     currentPrice: document.getElementById('currentPrice'),
     previousClose: document.getElementById('previousClose'),
     dataPoints: document.getElementById('dataPoints'),
     dateRange: document.getElementById('dateRange'),
+    dataSource: document.getElementById('dataSource'),
+    marketStatus: document.getElementById('marketStatus'),
     predictionCard: document.getElementById('predictionCard'),
     signalText: document.getElementById('signalText'),
     signalIcon: document.getElementById('signalIcon'),
@@ -70,7 +94,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
-    console.log('🚀 Enhanced Manteef Stock Predictor Initialized');
+    console.log('🚀 Enhanced Manteef Stock Predictor v3.0 Initialized');
     console.log('🔗 API URL:', API_BASE_URL);
     showEmptyState();
     initializeCharts();
@@ -82,13 +106,28 @@ function attachEventListeners() {
     elements.clearTickerBtn.addEventListener('click', clearTickerForm);
     elements.clearBtn.addEventListener('click', clearManualForm);
     elements.sampleBtn.addEventListener('click', fillSampleData);
-    elements.tickerInput.addEventListener('input', validateTickerInput);
+    elements.tickerInput.addEventListener('input', handleTickerInput);
     elements.tickerInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
             handleFormSubmission(e);
         }
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            navigateSuggestions(e.key === 'ArrowDown' ? 1 : -1);
+        }
+        if (e.key === 'Escape') {
+            hideSuggestions();
+        }
     });
+    
+    // Click outside to hide suggestions
+    document.addEventListener('click', function(e) {
+        if (!elements.tickerInput.contains(e.target) && !elements.tickerSuggestions.contains(e.target)) {
+            hideSuggestions();
+        }
+    });
+    
     FEATURE_NAMES.forEach(feature => {
         const input = document.getElementById(feature);
         if (input) {
@@ -96,6 +135,72 @@ function attachEventListeners() {
             input.addEventListener('blur', validateInput);
         }
     });
+}
+
+function handleTickerInput(event) {
+    const input = event.target;
+    const value = input.value.toUpperCase().replace(/[^A-Z]/g, '');
+    input.value = value;
+    
+    if (value.length > 0) {
+        showTickerSuggestions(value);
+    } else {
+        hideSuggestions();
+    }
+}
+
+function showTickerSuggestions(query) {
+    const suggestions = POPULAR_TICKERS.filter(item => 
+        item.ticker.startsWith(query) || item.ticker.includes(query)
+    ).slice(0, 8);
+    
+    if (suggestions.length === 0) {
+        hideSuggestions();
+        return;
+    }
+    
+    elements.tickerSuggestions.innerHTML = suggestions.map(item => `
+        <div class="suggestion-item" data-ticker="${item.ticker}">
+            <span class="suggestion-ticker">${item.ticker}</span>
+            <span class="suggestion-name">${item.name}</span>
+        </div>
+    `).join('');
+    
+    // Add click event listeners to suggestions
+    elements.tickerSuggestions.querySelectorAll('.suggestion-item').forEach(item => {
+        item.addEventListener('click', function() {
+            const ticker = this.dataset.ticker;
+            elements.tickerInput.value = ticker;
+            hideSuggestions();
+            elements.tickerInput.focus();
+        });
+    });
+    
+    elements.tickerSuggestions.classList.remove('hidden');
+}
+
+function hideSuggestions() {
+    elements.tickerSuggestions.classList.add('hidden');
+}
+
+function navigateSuggestions(direction) {
+    const suggestions = elements.tickerSuggestions.querySelectorAll('.suggestion-item');
+    if (suggestions.length === 0) return;
+    
+    const current = elements.tickerSuggestions.querySelector('.suggestion-item.highlighted');
+    let index = -1;
+    
+    if (current) {
+        index = Array.from(suggestions).indexOf(current);
+        current.classList.remove('highlighted');
+    }
+    
+    index += direction;
+    if (index < 0) index = suggestions.length - 1;
+    if (index >= suggestions.length) index = 0;
+    
+    suggestions[index].classList.add('highlighted');
+    elements.tickerInput.value = suggestions[index].dataset.ticker;
 }
 
 function switchMode(mode) {
@@ -107,11 +212,13 @@ function switchMode(mode) {
     clearTickerForm();
     clearManualForm();
     showEmptyState();
+    hideSuggestions();
     console.log(`Switched to ${mode} mode`);
 }
 
 async function handleFormSubmission(event) {
     event.preventDefault();
+    hideSuggestions();
     if (currentMode === 'ticker') {
         await handleTickerPrediction();
     } else {
@@ -122,15 +229,17 @@ async function handleFormSubmission(event) {
 async function handleTickerPrediction() {
     const ticker = elements.tickerInput.value.trim().toUpperCase();
     if (!ticker) {
-        showError('Please enter a stock ticker symbol.');
+        showError('Please enter a stock ticker symbol.', []);
         return;
     }
     if (!validateTicker(ticker)) {
-        showError('Invalid ticker format. Use 1-5 letter stock symbols (e.g., AAPL, TSLA).');
+        showError('Invalid ticker format. Use 1-5 letter stock symbols (e.g., AAPL, TSLA).', ['AAPL', 'MSFT', 'GOOGL']);
         return;
     }
+    
     showLoadingState();
     setButtonLoading(elements.predictTickerBtn, true);
+    
     try {
         const response = await fetch(`${API_BASE_URL}/predict-ticker`, {
             method: 'POST',
@@ -140,27 +249,52 @@ async function handleTickerPrediction() {
             },
             body: JSON.stringify({ ticker: ticker })
         });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
+        
         const result = await response.json();
-        if (result.error) {
-            throw new Error(result.error);
+        
+        if (!response.ok || result.error) {
+            throw new Error(result.error || `HTTP error! status: ${response.status}`);
         }
+        
         displayTickerResults(result);
         console.log('✅ Ticker prediction successful:', result);
+        
     } catch (error) {
         console.error('Ticker prediction error:', error);
+        
         let errorMessage = 'Ticker prediction failed. Please try again.';
-        if (error.message.includes('Insufficient data')) {
-            errorMessage = `Unable to fetch sufficient data for ${ticker}. Please verify the ticker symbol and try again.`;
-        } else if (error.message.includes('Invalid ticker')) {
-            errorMessage = `Invalid ticker symbol: ${ticker}. Please check and try again.`;
-        } else if (error.message) {
+        let suggestions = [];
+        
+        if (error.message.includes('Insufficient data') || error.message.includes('Not enough')) {
+            errorMessage = `Unable to fetch sufficient data for ${ticker}. This might be a newly listed or delisted stock.`;
+            suggestions = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA'];
+        } else if (error.message.includes('Invalid ticker') || error.message.includes('No data available')) {
+            errorMessage = `Invalid ticker symbol: ${ticker}. Please verify the symbol and try again.`;
+            suggestions = getTickerSuggestions(ticker);
+        } else if (error.message.includes('failed')) {
+            // Try to extract suggestions from server response
+            try {
+                const response = await fetch(`${API_BASE_URL}/predict-ticker`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: ticker })
+                });
+                const errorData = await response.json();
+                if (errorData.suggestions) {
+                    suggestions = errorData.suggestions;
+                }
+            } catch (e) {
+                // Fallback suggestions
+                suggestions = getTickerSuggestions(ticker);
+            }
             errorMessage = error.message;
+        } else {
+            errorMessage = error.message || 'An unexpected error occurred. Please try again.';
+            suggestions = ['AAPL', 'MSFT', 'GOOGL'];
         }
-        showError(errorMessage);
+        
+        showError(errorMessage, suggestions);
+        
     } finally {
         setButtonLoading(elements.predictTickerBtn, false);
     }
@@ -168,7 +302,7 @@ async function handleTickerPrediction() {
 
 async function handleManualPrediction() {
     if (!validateManualForm()) {
-        showError('Please fill in all required fields with valid numerical values.');
+        showError('Please fill in all required fields with valid numerical values.', []);
         return;
     }
     const formData = getManualFormData();
@@ -195,7 +329,7 @@ async function handleManualPrediction() {
         console.log('✅ Manual prediction successful:', result);
     } catch (error) {
         console.error('Manual prediction error:', error);
-        showError(error.message || 'Manual prediction failed. Please try again.');
+        showError(error.message || 'Manual prediction failed. Please try again.', []);
     } finally {
         setButtonLoading(elements.predictBtn, false);
     }
@@ -204,7 +338,7 @@ async function handleManualPrediction() {
 async function getTickerInfo() {
     const ticker = elements.tickerInput.value.trim().toUpperCase();
     if (!ticker || !validateTicker(ticker)) {
-        showError('Please enter a valid ticker symbol first.');
+        showError('Please enter a valid ticker symbol first.', ['AAPL', 'MSFT', 'GOOGL']);
         return;
     }
     setButtonLoading(elements.tickerInfoBtn, true);
@@ -225,10 +359,23 @@ async function getTickerInfo() {
         console.log('✅ Ticker info retrieved:', data);
     } catch (error) {
         console.error('Ticker info error:', error);
-        showError(error.message || 'Failed to get ticker information.');
+        const suggestions = error.message.includes('Invalid') ? getTickerSuggestions(ticker) : [];
+        showError(error.message || 'Failed to get ticker information.', suggestions);
     } finally {
         setButtonLoading(elements.tickerInfoBtn, false);
     }
+}
+
+function getTickerSuggestions(ticker) {
+    if (!ticker) return ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA'];
+    
+    const firstLetter = ticker[0].toUpperCase();
+    const suggestions = POPULAR_TICKERS
+        .filter(item => item.ticker.startsWith(firstLetter))
+        .slice(0, 3)
+        .map(item => item.ticker);
+    
+    return suggestions.length > 0 ? suggestions : ['AAPL', 'MSFT', 'GOOGL'];
 }
 
 function displayTickerResults(result) {
@@ -242,9 +389,25 @@ function displayTickerResults(result) {
 function displayTickerInfo(result) {
     const tickerInfo = result.ticker_info;
     elements.tickerSymbol.textContent = tickerInfo.ticker;
-    elements.currentPrice.textContent = `$${tickerInfo.current_price.toFixed(2)}`;
-    elements.previousClose.textContent = `$${tickerInfo.previous_close.toFixed(2)}`;
+    elements.currentPrice.textContent = `${tickerInfo.current_price.toFixed(2)}`;
+    elements.previousClose.textContent = `${tickerInfo.previous_close.toFixed(2)}`;
     elements.dataPoints.textContent = tickerInfo.data_points.toString();
+    
+    // Display data source
+    const dataSource = tickerInfo.data_source || 'Unknown';
+    elements.dataSource.textContent = dataSource.charAt(0).toUpperCase() + dataSource.slice(1);
+    
+    // Display market status
+    if (tickerInfo.market_status) {
+        const status = tickerInfo.market_status;
+        const marketText = status.is_open ? 'Open' : (status.is_weekend ? 'Closed (Weekend)' : 'Closed');
+        elements.marketStatus.textContent = marketText;
+        elements.marketStatus.style.color = status.is_open ? '#10b981' : '#ef4444';
+    } else {
+        elements.marketStatus.textContent = 'Unknown';
+    }
+    
+    // Format date range
     const startDate = new Date(tickerInfo.date_range.start);
     const endDate = new Date(tickerInfo.date_range.end);
     const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
@@ -264,13 +427,16 @@ function displayPredictionResults(result) {
     const signal = result.signal || (isPositive ? 'BUY' : 'SELL');
     const confidence = result.confidence || 0.5;
     const strength = result.signal_strength || 'UNKNOWN';
+    
     elements.predictionCard.className = `prediction-card ${isPositive ? 'buy' : 'sell'}`;
     elements.signalText.textContent = signal;
     elements.signalIcon.innerHTML = `<i class="fas fa-arrow-${isPositive ? 'up' : 'down'}"></i>`;
+    
     const confidencePercent = Math.round(confidence * 100);
     elements.confidenceFill.style.width = `${confidencePercent}%`;
     elements.confidenceText.textContent = `${confidencePercent}%`;
     elements.strengthBadge.textContent = strength;
+    
     const probabilities = result.probabilities || { up: confidence, down: 1 - confidence };
     elements.upProbability.textContent = `${Math.round(probabilities.up * 100)}%`;
     elements.downProbability.textContent = `${Math.round(probabilities.down * 100)}%`;
@@ -279,11 +445,6 @@ function displayPredictionResults(result) {
 
 function validateTicker(ticker) {
     return ticker && ticker.length >= 1 && ticker.length <= 5 && /^[A-Z]+$/.test(ticker);
-}
-
-function validateTickerInput(event) {
-    const input = event.target;
-    input.value = input.value.toUpperCase().replace(/[^A-Z]/g, '');
 }
 
 function validateManualForm() {
@@ -338,6 +499,7 @@ function getManualFormData() {
 
 function clearTickerForm() {
     elements.tickerInput.value = '';
+    hideSuggestions();
 }
 
 function clearManualForm() {
@@ -374,6 +536,7 @@ function showLoadingState() {
     setElementDisplay('emptyState', 'none');
     setElementDisplay('resultsContent', 'none');
     setElementDisplay('errorState', 'none');
+    hideSuggestions();
 }
 
 function showEmptyState() {
@@ -391,12 +554,29 @@ function showResultsState() {
     elements.resultsContent.classList.add('fade-in');
 }
 
-function showError(message) {
+function showError(message, suggestions = []) {
     setElementDisplay('loadingState', 'none');
     setElementDisplay('emptyState', 'none');
     setElementDisplay('resultsContent', 'none');
     setElementDisplay('errorState', 'flex');
     elements.errorMessage.textContent = message;
+    
+    if (suggestions && suggestions.length > 0) {
+        elements.errorSuggestions.classList.remove('hidden');
+        elements.suggestedTickers.innerHTML = suggestions.map(ticker => 
+            `<span class="suggested-ticker" onclick="selectSuggestedTicker('${ticker}')">${ticker}</span>`
+        ).join('');
+    } else {
+        elements.errorSuggestions.classList.add('hidden');
+    }
+    
+    hideSuggestions();
+}
+
+function selectSuggestedTicker(ticker) {
+    elements.tickerInput.value = ticker;
+    resetResults();
+    elements.tickerInput.focus();
 }
 
 function setElementDisplay(elementKey, display) {
@@ -455,12 +635,18 @@ function debounce(func, wait) {
 
 async function checkAPIStatus() {
     try {
-        const response = await fetch(`${API_BASE_URL}/`);
+        const response = await fetch(`${API_BASE_URL}/`, { timeout: 10000 });
         if (response.ok) {
             const data = await response.json();
             if (data.status === 'healthy') {
                 elements.apiStatus.querySelector('.status-dot').classList.add('connected');
-                elements.apiStatus.querySelector('.status-text').textContent = 'Connected to API';
+                elements.apiStatus.querySelector('.status-text').textContent = 
+                    `Connected • v${data.version || '3.0'} • ${data.data_sources ? 'Enhanced' : 'Standard'}`;
+                
+                // Show data source info if available
+                if (data.data_sources && data.data_sources.length > 0) {
+                    console.log('📊 Data Sources Available:', data.data_sources);
+                }
             } else {
                 throw new Error('API not healthy');
             }
@@ -470,6 +656,7 @@ async function checkAPIStatus() {
     } catch (error) {
         console.error('API status check failed:', error);
         elements.apiStatus.querySelector('.status-text').textContent = 'API Disconnected';
+        elements.apiStatus.querySelector('.status-dot').classList.remove('connected');
     }
 }
 
