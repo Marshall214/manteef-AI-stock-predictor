@@ -39,7 +39,7 @@ limiter = Limiter(
     default_limits=["200 per day", "50 per hour"]
 )
 
-# CORS configuration
+# CORS configuration - Enhanced
 CORS(app, resources={
     r"/*": {
         "origins": [
@@ -50,7 +50,9 @@ CORS(app, resources={
             "https://manteef-stock-predictor.netlify.app"
         ],
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
+        "allow_headers": ["Content-Type", "Authorization", "Accept"],
+        "expose_headers": ["Content-Type"],
+        "supports_credentials": False
     }
 })
 
@@ -453,12 +455,26 @@ def log_request_response(response):
     duration = time.time() - request.start_time
     logger.info(f"{request.method} {request.path} - {response.status_code} - {duration:.2f}s")
     
-    # Track ticker requests
-    if 'ticker' in request.path:
-        ticker = request.json.get('ticker') if request.json else 'unknown'
-        logger.info(f"Ticker request: {ticker} - Status: {response.status_code}")
+    # FIXED: Only try to access request.json for appropriate requests
+    if request.method == 'POST' and request.content_type and 'application/json' in request.content_type:
+        try:
+            if hasattr(request, 'json') and request.json:
+                ticker = request.json.get('ticker', 'unknown')
+                logger.info(f"Ticker request: {ticker} - Status: {response.status_code}")
+        except Exception as e:
+            logger.debug(f"Could not log ticker info: {e}")
     
     return response
+
+# ADDED: Explicit OPTIONS handler for all routes
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = jsonify({'status': 'ok'})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization,Accept")
+        response.headers.add('Access-Control-Allow-Methods', "GET,POST,OPTIONS")
+        return response
 
 # API Endpoints
 @app.route('/', methods=['GET'])
@@ -472,13 +488,17 @@ def health_check():
         'environment': os.getenv('FLASK_ENV', 'development'),
         'features': ['manual_prediction', 'ticker_prediction', 'ticker_info', 'finnhub_integration'],
         'data_sources': ['finnhub_primary', 'yfinance_fallback'],
-        'market_open': is_market_open()
+        'market_open': is_market_open(),
+        'cors_enabled': True
     })
 
-@app.route('/predict', methods=['POST'])
+@app.route('/predict', methods=['POST', 'OPTIONS'])
 @limiter.limit("30 per minute")
 def predict():
     """Prediction with manual feature input"""
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
+        
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 500
     try:
@@ -497,10 +517,13 @@ def predict():
         logger.error(f"Prediction error: {e}")
         return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
 
-@app.route('/predict-ticker', methods=['POST'])
+@app.route('/predict-ticker', methods=['POST', 'OPTIONS'])
 @limiter.limit("20 per minute")
 def predict_ticker():
     """Enhanced ticker prediction with Finnhub primary"""
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
+        
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 500
         
@@ -544,10 +567,13 @@ def predict_ticker():
         logger.error(f"Ticker prediction error: {e}")
         return jsonify({'error': f'Ticker prediction failed: {str(e)}'}), 500
 
-@app.route('/ticker-info', methods=['POST'])
+@app.route('/ticker-info', methods=['POST', 'OPTIONS'])
 @limiter.limit("30 per minute")
 def get_ticker_info():
     """Get ticker information and technical indicators"""
+    if request.method == 'OPTIONS':
+        return jsonify({'status': 'ok'}), 200
+        
     try:
         data = request.json
         if not data or 'ticker' not in data:
@@ -656,6 +682,8 @@ if __name__ == "__main__":
     logger.info("   POST /ticker-info - Get ticker technical indicators")
     logger.info("   GET  /features   - Get expected features")
     logger.info("   GET  /model-info - Get model information")
-    logger.info(f"🔑 Finnhub API configured: {bool(os.getenv('FINNHUB_API_KEY'))}")
-    logger.info(f"🌐 Running on port {port}")
+    logger.info(f" Finnhub API configured: {bool(os.getenv('FINNHUB_API_KEY'))}")
+    logger.info(f"Running on port {port}")
+    logger.info("✅ CORS enabled for all origins")
+    logger.info("✅ OPTIONS requests handled")
     app.run(debug=debug, host="0.0.0.0", port=port)
