@@ -16,11 +16,11 @@ const elements = {
     apiStatus: document.querySelector('.api-status'),
     signalText: document.getElementById('signalText'),
     confidenceText: document.getElementById('confidenceText'),
-    strengthText: document.getElementById('strengthText'),
+    strengthText: document.getElementById('signalStrengthText'), // fixed ID
     dateRangeText: document.getElementById('dateRangeText'),
     indicatorsTable: document.getElementById('indicatorsTable'),
     modelName: document.getElementById('modelName'),
-    miniChartContainer: null
+    miniChartContainer: document.getElementById('miniChartContainer')
 };
 
 // --- Feature list (fetched from API) ---
@@ -31,7 +31,7 @@ let miniChart = null;
 async function init() {
     await fetchFeatures();
     checkAPIStatus();
-    elements.emptyState.style.display = 'block';
+    elements.emptyState.classList.remove('hidden');
 }
 
 // --- Fetch feature names ---
@@ -115,15 +115,11 @@ async function predictTicker(ticker) {
 function displayResults(data) {
     showResultsState();
 
-    // Update signals
     elements.signalText.textContent = data.signal;
     elements.confidenceText.textContent = `Confidence: ${data.confidence}`;
     elements.strengthText.textContent = data.signal_strength;
-
-    // Update date range
     elements.dateRangeText.textContent = `Data Range: ${data.date_range.start} → ${data.date_range.end}`;
 
-    // Update indicators table
     if (elements.indicatorsTable && data.features) {
         const rows = Object.entries(data.features)
             .map(([key, value]) => `<tr><td>${key}</td><td>${Number(value).toFixed(4)}</td></tr>`)
@@ -131,25 +127,18 @@ function displayResults(data) {
         elements.indicatorsTable.innerHTML = rows;
     }
 
-    // Render mini price trend chart
     renderMiniTrend(data.features);
-
     updateLastUpdate();
 }
 
 // --- Mini Trend Chart ---
 function renderMiniTrend(features) {
-    const labels = Object.keys(features).slice(-30); // Last 30 entries
+    if (!elements.miniChartContainer) return;
+
+    const labels = Object.keys(features).slice(-30);
     const values = Object.values(features).slice(-30);
 
-    if (!elements.miniChartContainer) {
-        elements.miniChartContainer = document.createElement('canvas');
-        elements.resultsContent.appendChild(elements.miniChartContainer);
-    }
-
-    if (miniChart) {
-        miniChart.destroy();
-    }
+    if (miniChart) miniChart.destroy();
 
     miniChart = new Chart(elements.miniChartContainer, {
         type: 'line',
@@ -178,24 +167,24 @@ function renderMiniTrend(features) {
 
 // --- States ---
 function showLoadingState() {
-    elements.loadingState.style.display = 'flex';
-    elements.emptyState.style.display = 'none';
-    elements.resultsContent.style.display = 'none';
-    elements.errorState.style.display = 'none';
+    elements.loadingState.classList.remove('hidden');
+    elements.emptyState.classList.add('hidden');
+    elements.resultsContent.classList.add('hidden');
+    elements.errorState.classList.add('hidden');
 }
 
 function showResultsState() {
-    elements.loadingState.style.display = 'none';
-    elements.emptyState.style.display = 'none';
-    elements.resultsContent.style.display = 'block';
-    elements.errorState.style.display = 'none';
+    elements.loadingState.classList.add('hidden');
+    elements.emptyState.classList.add('hidden');
+    elements.resultsContent.classList.remove('hidden');
+    elements.errorState.classList.add('hidden');
 }
 
 function showError(message) {
-    elements.loadingState.style.display = 'none';
-    elements.emptyState.style.display = 'none';
-    elements.resultsContent.style.display = 'none';
-    elements.errorState.style.display = 'flex';
+    elements.loadingState.classList.add('hidden');
+    elements.emptyState.classList.add('hidden');
+    elements.resultsContent.classList.add('hidden');
+    elements.errorState.classList.remove('hidden');
     elements.errorMessage.textContent = message;
 }
 
@@ -233,10 +222,10 @@ window.handleResetClick = () => {
 function clearPrediction() {
     elements.tickerInput.value = '';
     hideSuggestions();
-    elements.loadingState.style.display = 'none';
-    elements.resultsContent.style.display = 'none';
-    elements.errorState.style.display = 'none';
-    elements.emptyState.style.display = 'block';
+    elements.loadingState.classList.add('hidden');
+    elements.resultsContent.classList.add('hidden');
+    elements.errorState.classList.add('hidden');
+    elements.emptyState.classList.remove('hidden');
     elements.lastUpdate.textContent = '';
     elements.indicatorsTable.innerHTML = '';
     elements.signalText.textContent = '';

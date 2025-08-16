@@ -1,229 +1,239 @@
-/* --- Global Styles --- */
+/* --- General Reset & Base --- */
 * {
-    box-sizing: border-box;
     margin: 0;
     padding: 0;
+    box-sizing: border-box;
+}
+body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #0e1117;
     color: #f0f0f0;
+    line-height: 1.5;
 }
 
-body {
-    background-color: #121212;
-    display: flex;
-    justify-content: center;
+/* --- Container --- */
+.container {
+    max-width: 900px;
+    margin: 30px auto;
     padding: 20px;
 }
 
-.container {
-    width: 100%;
-    max-width: 900px;
-}
-
 /* --- Header --- */
-.header {
+header h1 {
     text-align: center;
-    margin-bottom: 20px;
-}
-
-.header h1 {
     font-size: 2rem;
-    color: #00ffe0;
     margin-bottom: 5px;
+    color: #00ff90;
 }
-
 .model-info {
+    text-align: center;
     font-size: 0.9rem;
-    color: #cccccc;
+    color: #bbb;
+    margin-bottom: 20px;
 }
 
 /* --- API Status --- */
 .api-status {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     margin-bottom: 15px;
     justify-content: center;
 }
-
 .status-dot {
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background-color: red;
-    transition: background 0.3s;
+    background: red;
 }
-
 .status-dot.connected {
-    background-color: #00ff90;
+    background: #00ff90;
+}
+.status-text {
+    font-size: 0.95rem;
 }
 
-/* --- Input Field --- */
+/* --- Input --- */
 .input-container {
     position: relative;
-    text-align: center;
-    margin-bottom: 15px;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px;
 }
-
 #tickerInput {
-    width: 80%;
-    max-width: 400px;
-    padding: 12px 15px;
-    border-radius: 8px;
+    padding: 10px 15px;
+    border-radius: 5px;
     border: none;
-    outline: none;
-    background-color: #1e1e1e;
+    width: 250px;
+    background-color: #1b1e27;
     color: #f0f0f0;
     font-size: 1rem;
 }
-
-#tickerInput::placeholder {
-    color: #888;
+#tickerInput:focus {
+    outline: none;
+    box-shadow: 0 0 5px #00ff90;
 }
 
-/* --- Dropdown Suggestions --- */
+/* --- Ticker Suggestions --- */
 #tickerSuggestions {
     position: absolute;
-    top: 50px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 80%;
-    max-width: 400px;
-    background-color: #1f1f1f;
-    border: 1px solid #333;
-    border-radius: 5px;
+    top: 45px;
+    width: 250px;
     max-height: 200px;
     overflow-y: auto;
+    background-color: #1b1e27;
+    border: 1px solid #333;
+    border-radius: 5px;
     z-index: 10;
 }
-
 .suggestion-item {
     padding: 8px 12px;
     cursor: pointer;
 }
-
 .suggestion-item:hover {
     background-color: #333;
 }
 
 /* --- Buttons --- */
 .buttons {
-    text-align: center;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
     margin-bottom: 20px;
 }
-
-button {
+.predict-btn, .reset-btn {
     padding: 10px 20px;
-    margin: 5px;
-    border-radius: 8px;
+    font-size: 1rem;
+    border-radius: 5px;
     border: none;
     cursor: pointer;
-    font-size: 1rem;
-    font-weight: bold;
-    transition: all 0.3s ease;
+    transition: 0.2s;
 }
-
 .predict-btn {
-    background: linear-gradient(45deg, #00ff90, #00cfff);
-    color: #121212;
+    background-color: #00ff90;
+    color: #0e1117;
 }
-
 .predict-btn:hover {
-    filter: brightness(1.2);
+    background-color: #00e075;
 }
-
 .reset-btn {
-    background: #ff4d4d;
+    background-color: #ff4c4c;
     color: #fff;
 }
-
 .reset-btn:hover {
-    filter: brightness(1.2);
+    background-color: #e03c3c;
 }
 
-/* --- State Messages --- */
+/* --- States --- */
 .state {
-    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     padding: 15px;
-    margin-bottom: 15px;
-    border-radius: 8px;
-    background-color: #1e1e1e;
+    margin-bottom: 20px;
+    border-radius: 5px;
+    font-weight: bold;
 }
-
 .hidden {
-    display: none;
+    display: none !important;
 }
-
-/* --- Spinner --- */
+#loadingState {
+    background-color: #1b1e27;
+    gap: 10px;
+}
 .spinner {
     border: 4px solid #333;
     border-top: 4px solid #00ff90;
     border-radius: 50%;
-    width: 24px;
-    height: 24px;
-    margin: 0 auto 10px;
+    width: 20px;
+    height: 20px;
     animation: spin 1s linear infinite;
 }
-
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
-
-/* --- Results Section --- */
-.results-section {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    align-items: center;
+#errorState {
+    background-color: #2d1b1b;
+    color: #ff4c4c;
+}
+#emptyState {
+    background-color: #1b1e27;
 }
 
 /* --- Cards --- */
 .card {
-    background-color: #1e1e1e;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 255, 160, 0.2);
-    width: 100%;
+    background-color: #1b1e27;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 0 10px rgba(0,255,144,0.2);
 }
-
 .result-card h2, .result-card h3 {
-    color: #00ffe0;
-    margin-bottom: 15px;
+    color: #00ff90;
+    margin-bottom: 10px;
 }
 
+/* --- Result Rows --- */
 .result-row {
     display: flex;
     justify-content: space-between;
-    padding: 8px 0;
-    font-size: 1rem;
+    margin-bottom: 5px;
+}
+.result-row span:first-child {
+    color: #bbb;
+}
+.result-row span:last-child {
+    font-weight: bold;
 }
 
 /* --- Table --- */
 table {
     width: 100%;
     border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 0.9rem;
 }
-
 th, td {
-    border: 1px solid #333;
     padding: 8px;
     text-align: center;
+    border: 1px solid #333;
 }
-
 th {
-    background-color: #1a1a1a;
-    color: #00ffe0;
+    background-color: #22252d;
+    color: #00ff90;
+}
+td {
+    background-color: #1b1e27;
 }
 
-/* --- Mini Trend Chart --- */
-canvas {
-    background-color: #121212;
-    border-radius: 8px;
+/* --- Mini Chart --- */
+canvas#miniChartContainer {
+    width: 100% !important;
+    height: 200px !important;
+    margin-top: 10px;
 }
 
-/* --- Responsive --- */
-@media (max-width: 600px) {
-    #tickerInput, #tickerSuggestions {
-        width: 90%;
+/* --- Last Update --- */
+#lastUpdate {
+    font-size: 0.8rem;
+    text-align: right;
+    color: #bbb;
+    margin-top: 5px;
+}
+
+/* --- Mobile Responsiveness --- */
+@media (max-width: 480px) {
+    .result-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    .result-row span:first-child {
+        font-size: 0.85rem;
+    }
+    .result-row span:last-child {
+        font-size: 0.95rem;
     }
 }
+

@@ -5,14 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manteef AI Stock Predictor</title>
     <link rel="stylesheet" href="styles.css">
-    <!-- Chart.js CDN for mini trend chart -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
 
-        <!-- Header -->
-        <header class="header">
+        <header>
             <h1>Manteef AI Stock Predictor</h1>
             <p class="model-info">Model: <span id="modelName">XGBRegressor</span></p>
         </header>
@@ -20,7 +18,7 @@
         <!-- API Status -->
         <div class="api-status">
             <div class="status-dot"></div>
-            <span class="status-text">Checking API...</span>
+            <span class="status-text">Checking...</span>
         </div>
 
         <!-- Ticker Input -->
@@ -28,8 +26,6 @@
             <input type="text" id="tickerInput" placeholder="Enter stock ticker (e.g., AAPL)" autocomplete="off">
             <div id="tickerSuggestions" class="hidden"></div>
         </div>
-
-        <!-- Buttons -->
         <div class="buttons">
             <button class="predict-btn" onclick="handlePredictClick()">Predict</button>
             <button class="reset-btn" onclick="handleResetClick()">Clear</button>
@@ -51,17 +47,15 @@
 
         <!-- Results -->
         <div id="resultsContent" class="results-section hidden">
-            <!-- Prediction Card -->
+
             <div class="card result-card">
                 <h2>Prediction Results</h2>
                 <div class="result-row"><span>Signal:</span> <span id="signalText"></span></div>
                 <div class="result-row"><span>Confidence:</span> <span id="confidenceText"></span></div>
                 <div class="result-row"><span>Signal Strength:</span> <span id="signalStrengthText"></span></div>
                 <div class="result-row"><span>Date Range:</span> <span id="dateRangeText"></span></div>
-                <div class="result-row"><span>Model Used:</span> <span id="modelUsedText">XGBRegressor</span></div>
             </div>
 
-            <!-- Technical Indicators Card -->
             <div class="card result-card">
                 <h3>Technical Indicators</h3>
                 <table>
@@ -78,17 +72,16 @@
                 <p id="lastUpdate"></p>
             </div>
 
-            <!-- Mini Price Trend -->
+            <!-- Mini Price Trend Chart -->
             <div class="card result-card">
-                <h3>Mini Price Trend (Last 30 Days)</h3>
-                <canvas id="miniTrendChart" width="400" height="150"></canvas>
+                <h3>Mini Price Trend</h3>
+                <canvas id="miniChartContainer"></canvas>
             </div>
+
         </div>
 
     </div>
 
-    <!-- Scripts -->
-     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
