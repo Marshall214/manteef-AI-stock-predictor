@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
-    console.log('🚀 Enhanced Manteef Stock Predictor v3.0 Initialized');
+    console.log('🚀 Enhanced Manteef Stock Predictor v3.1 Initialized');
     console.log('🔗 API URL:', API_BASE_URL);
     showEmptyState();
     initializeCharts();
@@ -229,11 +229,12 @@ async function handleFormSubmission(event) {
 async function handleTickerPrediction() {
     const ticker = elements.tickerInput.value.trim().toUpperCase();
     if (!ticker) {
-        showError('Please enter a stock ticker symbol.', []);
+        showError('Please enter a stock ticker symbol.', ['AAPL', 'MSFT', 'GOOGL']);
         return;
     }
     if (!validateTicker(ticker)) {
-        showError('Invalid ticker format. Use 1-5 letter stock symbols (e.g., AAPL, TSLA).', ['AAPL', 'MSFT', 'GOOGL']);
+        const suggestions = getTickerSuggestions(ticker);
+        showError(`Invalid ticker format: ${ticker}. Use 1-5 letter stock symbols.`, suggestions);
         return;
     }
     
@@ -253,7 +254,12 @@ async function handleTickerPrediction() {
         const result = await response.json();
         
         if (!response.ok || result.error) {
-            throw new Error(result.error || `HTTP error! status: ${response.status}`);
+            let errorMessage = result.error || `HTTP error! Status: ${response.status}`;
+            const suggestions = result.suggestions || getTickerSuggestions(ticker);
+            if (result.help) {
+                errorMessage += ` ${result.help}`;
+            }
+            throw new Error(errorMessage);
         }
         
         displayTickerResults(result);
@@ -261,40 +267,10 @@ async function handleTickerPrediction() {
         
     } catch (error) {
         console.error('Ticker prediction error:', error);
-        
-        let errorMessage = 'Ticker prediction failed. Please try again.';
-        let suggestions = [];
-        
-        if (error.message.includes('Insufficient data') || error.message.includes('Not enough')) {
-            errorMessage = `Unable to fetch sufficient data for ${ticker}. This might be a newly listed or delisted stock.`;
-            suggestions = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA'];
-        } else if (error.message.includes('Invalid ticker') || error.message.includes('No data available')) {
-            errorMessage = `Invalid ticker symbol: ${ticker}. Please verify the symbol and try again.`;
-            suggestions = getTickerSuggestions(ticker);
-        } else if (error.message.includes('failed')) {
-            // Try to extract suggestions from server response
-            try {
-                const response = await fetch(`${API_BASE_URL}/predict-ticker`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ticker: ticker })
-                });
-                const errorData = await response.json();
-                if (errorData.suggestions) {
-                    suggestions = errorData.suggestions;
-                }
-            } catch (e) {
-                // Fallback suggestions
-                suggestions = getTickerSuggestions(ticker);
-            }
-            errorMessage = error.message;
-        } else {
-            errorMessage = error.message || 'An unexpected error occurred. Please try again.';
-            suggestions = ['AAPL', 'MSFT', 'GOOGL'];
-        }
-        
-        showError(errorMessage, suggestions);
-        
+        const suggestions = error.message.includes('Invalid ticker') || error.message.includes('Could not fetch data')
+            ? getTickerSuggestions(ticker)
+            : ['AAPL', 'MSFT', 'GOOGL'];
+        showError(error.message, suggestions);
     } finally {
         setButtonLoading(elements.predictTickerBtn, false);
     }
@@ -319,7 +295,7 @@ async function handleManualPrediction() {
         });
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            throw new Error(errorData.error || `HTTP error! Status: ${response.status}`);
         }
         const result = await response.json();
         if (result.error) {
@@ -338,7 +314,7 @@ async function handleManualPrediction() {
 async function getTickerInfo() {
     const ticker = elements.tickerInput.value.trim().toUpperCase();
     if (!ticker || !validateTicker(ticker)) {
-        showError('Please enter a valid ticker symbol first.', ['AAPL', 'MSFT', 'GOOGL']);
+        showError('Please enter a valid ticker symbol.', ['AAPL', 'MSFT', 'GOOGL']);
         return;
     }
     setButtonLoading(elements.tickerInfoBtn, true);
@@ -641,7 +617,7 @@ async function checkAPIStatus() {
             if (data.status === 'healthy') {
                 elements.apiStatus.querySelector('.status-dot').classList.add('connected');
                 elements.apiStatus.querySelector('.status-text').textContent = 
-                    `Connected • v${data.version || '3.0'} • ${data.data_sources ? 'Enhanced' : 'Standard'}`;
+                    `Connected • v${data.version || '3.1'} • ${data.data_sources ? 'Enhanced' : 'Standard'}`;
                 
                 // Show data source info if available
                 if (data.data_sources && data.data_sources.length > 0) {
