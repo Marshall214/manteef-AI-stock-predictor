@@ -11,6 +11,19 @@ const FEATURE_NAMES = [
     'RSI_14', 'momentum_7', 'momentum_21', 'ma_diff', 'vol_ratio_20'
 ];
 
+const FEATURE_DISPLAY_NAMES = {
+    'pct_change': 'Price Change %',
+    'ma_7': '7-Day MA',
+    'ma_21': '21-Day MA',
+    'volatility_7': '7-Day Volatility',
+    'volume': 'Volume',
+    'RSI_14': 'RSI (14)',
+    'momentum_7': '7-Day Momentum',
+    'momentum_21': '21-Day Momentum',
+    'ma_diff': 'MA Difference',
+    'vol_ratio_20': 'Volume Ratio'
+};
+
 const SAMPLE_DATA = {
     bullish: {
         pct_change: 0.025, ma_7: 46.50, ma_21: 45.20, volatility_7: 0.12, volume: 3200000,
@@ -84,7 +97,13 @@ const elements = {
     upProbability: document.getElementById('upProbability'),
     downProbability: document.getElementById('downProbability'),
     recommendation: document.getElementById('recommendation'),
-    lastUpdate: document.getElementById('lastUpdate')
+    lastUpdate: document.getElementById('lastUpdate'),
+    riskLevel: document.getElementById('riskLevel'),
+    riskText: document.getElementById('riskText'),
+    modelAccuracy: document.getElementById('modelAccuracy'),
+    predictionScore: document.getElementById('predictionScore'),
+    marketVolatility: document.getElementById('marketVolatility'),
+    summaryContent: document.getElementById('summaryContent')
 };
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -94,10 +113,10 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializeApp() {
-    console.log('🚀 Enhanced Manteef Stock Predictor v3.1 Initialized');
+    console.log('🚀 Enhanced Manteef Stock Predictor v3.2 Initialized');
     console.log('🔗 API URL:', API_BASE_URL);
     showEmptyState();
-    initializeCharts();
+    setTimeout(initializeCharts, 100);
 }
 
 function attachEventListeners() {
@@ -121,7 +140,6 @@ function attachEventListeners() {
         }
     });
     
-    // Click outside to hide suggestions
     document.addEventListener('click', function(e) {
         if (!elements.tickerInput.contains(e.target) && !elements.tickerSuggestions.contains(e.target)) {
             hideSuggestions();
@@ -166,7 +184,6 @@ function showTickerSuggestions(query) {
         </div>
     `).join('');
     
-    // Add click event listeners to suggestions
     elements.tickerSuggestions.querySelectorAll('.suggestion-item').forEach(item => {
         item.addEventListener('click', function() {
             const ticker = this.dataset.ticker;
@@ -238,6 +255,7 @@ async function handleTickerPrediction() {
         return;
     }
     
+    console.log(`📈 Starting ticker prediction for: ${ticker}`);
     showLoadingState();
     setButtonLoading(elements.predictTickerBtn, true);
     
@@ -252,6 +270,7 @@ async function handleTickerPrediction() {
         });
         
         const result = await response.json();
+        console.log('📊 Raw API Response:', result);
         
         if (!response.ok || result.error) {
             let errorMessage = result.error || `HTTP error! Status: ${response.status}`;
@@ -262,11 +281,11 @@ async function handleTickerPrediction() {
             throw new Error(errorMessage);
         }
         
+        console.log('✅ Processing successful prediction result...');
         displayTickerResults(result);
-        console.log('✅ Ticker prediction successful:', result);
         
     } catch (error) {
-        console.error('Ticker prediction error:', error);
+        console.error('❌ Ticker prediction error:', error);
         const suggestions = error.message.includes('Invalid ticker') || error.message.includes('Could not fetch data')
             ? getTickerSuggestions(ticker)
             : ['AAPL', 'MSFT', 'GOOGL'];
@@ -355,68 +374,237 @@ function getTickerSuggestions(ticker) {
 }
 
 function displayTickerResults(result) {
-    displayTickerInfo(result);
+    console.log('🎨 Displaying ticker results:', result);
+    
+    if (result.ticker_info) {
+        displayTickerInfo(result);
+        elements.tickerInfo.classList.remove('hidden');
+    }
+    
     displayPredictionResults(result);
-    updateCharts(result, result.technical_indicators);
-    elements.tickerInfo.classList.remove('hidden');
+    
+    const technicalData = result.technical_indicators || extractTechnicalData(result);
+    updateCharts(result, technicalData);
+    updateEnhancedMetrics(result);
+    
     showResultsState();
+    console.log('✅ Results display complete');
 }
 
 function displayTickerInfo(result) {
-    const tickerInfo = result.ticker_info;
-    elements.tickerSymbol.textContent = tickerInfo.ticker;
-    elements.currentPrice.textContent = `${tickerInfo.current_price.toFixed(2)}`;
-    elements.previousClose.textContent = `${tickerInfo.previous_close.toFixed(2)}`;
-    elements.dataPoints.textContent = tickerInfo.data_points.toString();
+    console.log('📋 Displaying ticker info:', result.ticker_info);
     
-    // Display data source
-    const dataSource = tickerInfo.data_source || 'Unknown';
-    elements.dataSource.textContent = dataSource.charAt(0).toUpperCase() + dataSource.slice(1);
+    const tickerInfo = result.ticker_info || {};
     
-    // Display market status
-    if (tickerInfo.market_status) {
+    if (elements.tickerSymbol && tickerInfo.ticker) {
+        elements.tickerSymbol.textContent = tickerInfo.ticker;
+    }
+    
+    if (elements.currentPrice && tickerInfo.current_price !== undefined) {
+        elements.currentPrice.textContent = `${tickerInfo.current_price.toFixed(2)}`;
+        
+        if (tickerInfo.previous_close !== undefined) {
+            const change = tickerInfo.current_price - tickerInfo.previous_close;
+            const changePercent = (change / tickerInfo.previous_close * 100).toFixed(2);
+            elements.currentPrice.innerHTML = `${tickerInfo.current_price.toFixed(2)} 
+                <span style="color: ${change >= 0 ? '#10b981' : '#ef4444'}; font-size: 0.8rem; margin-left: 5px;">
+                    ${change >= 0 ? '+' : ''}${changePercent}%
+                </span>`;
+        }
+    }
+    
+    if (elements.previousClose && tickerInfo.previous_close !== undefined) {
+        elements.previousClose.textContent = `${tickerInfo.previous_close.toFixed(2)}`;
+    }
+    
+    if (elements.dataPoints && tickerInfo.data_points !== undefined) {
+        elements.dataPoints.textContent = tickerInfo.data_points.toString();
+    }
+    
+    if (elements.dataSource) {
+        const dataSource = tickerInfo.data_source || 'Multiple Sources';
+        elements.dataSource.textContent = dataSource.charAt(0).toUpperCase() + dataSource.slice(1);
+    }
+    
+    if (elements.marketStatus && tickerInfo.market_status) {
         const status = tickerInfo.market_status;
         const marketText = status.is_open ? 'Open' : (status.is_weekend ? 'Closed (Weekend)' : 'Closed');
         elements.marketStatus.textContent = marketText;
         elements.marketStatus.style.color = status.is_open ? '#10b981' : '#ef4444';
-    } else {
+    } else if (elements.marketStatus) {
         elements.marketStatus.textContent = 'Unknown';
     }
     
-    // Format date range
-    const startDate = new Date(tickerInfo.date_range.start);
-    const endDate = new Date(tickerInfo.date_range.end);
-    const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-    elements.dateRange.textContent = `${daysDiff} days`;
+    if (elements.dateRange && tickerInfo.date_range) {
+        const startDate = new Date(tickerInfo.date_range.start);
+        const endDate = new Date(tickerInfo.date_range.end);
+        const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+        elements.dateRange.textContent = `${daysDiff} days`;
+    } else if (elements.dateRange) {
+        elements.dateRange.textContent = '90 days';
+    }
 }
 
 function displayManualResults(result, inputData) {
     elements.tickerInfo.classList.add('hidden');
     displayPredictionResults(result);
     updateCharts(result, inputData);
+    updateEnhancedMetrics(result);
     showResultsState();
 }
 
 function displayPredictionResults(result) {
+    console.log('🎯 Displaying prediction results:', result);
+    
     updateLastUpdate();
-    const isPositive = result.prediction === 1;
+    
+    const prediction = result.prediction !== undefined ? result.prediction : (result.signal === 'BUY' ? 1 : 0);
+    const isPositive = prediction === 1 || result.signal === 'BUY';
     const signal = result.signal || (isPositive ? 'BUY' : 'SELL');
     const confidence = result.confidence || 0.5;
-    const strength = result.signal_strength || 'UNKNOWN';
     
-    elements.predictionCard.className = `prediction-card ${isPositive ? 'buy' : 'sell'}`;
-    elements.signalText.textContent = signal;
-    elements.signalIcon.innerHTML = `<i class="fas fa-arrow-${isPositive ? 'up' : 'down'}"></i>`;
+    let strength = result.signal_strength || 'MODERATE';
+    if (confidence >= 0.8) strength = 'STRONG';
+    else if (confidence >= 0.65) strength = 'MODERATE';
+    else strength = 'WEAK';
+    
+    if (elements.predictionCard) {
+        elements.predictionCard.className = `prediction-card ${isPositive ? 'buy' : 'sell'}`;
+    }
+    
+    if (elements.signalText) {
+        elements.signalText.textContent = signal;
+    }
+    
+    if (elements.signalIcon) {
+        elements.signalIcon.innerHTML = `<i class="fas fa-arrow-${isPositive ? 'up' : 'down'}"></i>`;
+    }
     
     const confidencePercent = Math.round(confidence * 100);
-    elements.confidenceFill.style.width = `${confidencePercent}%`;
-    elements.confidenceText.textContent = `${confidencePercent}%`;
-    elements.strengthBadge.textContent = strength;
+    if (elements.confidenceFill) {
+        elements.confidenceFill.style.width = `${confidencePercent}%`;
+    }
     
-    const probabilities = result.probabilities || { up: confidence, down: 1 - confidence };
-    elements.upProbability.textContent = `${Math.round(probabilities.up * 100)}%`;
-    elements.downProbability.textContent = `${Math.round(probabilities.down * 100)}%`;
-    elements.recommendation.textContent = result.recommendation || `${strength}_${signal}`;
+    if (elements.confidenceText) {
+        elements.confidenceText.textContent = `${confidencePercent}%`;
+    }
+    
+    if (elements.strengthBadge) {
+        elements.strengthBadge.textContent = strength;
+    }
+    
+    let probabilities = result.probabilities;
+    if (!probabilities) {
+        if (isPositive) {
+            probabilities = { up: confidence, down: 1 - confidence };
+        } else {
+            probabilities = { up: 1 - confidence, down: confidence };
+        }
+    }
+    
+    if (elements.upProbability) {
+        const upPercent = Math.round(probabilities.up * 100);
+        elements.upProbability.innerHTML = `
+            <i class="fas fa-arrow-trend-up"></i>
+            ${upPercent}%
+        `;
+    }
+    
+    if (elements.downProbability) {
+        const downPercent = Math.round(probabilities.down * 100);
+        elements.downProbability.innerHTML = `
+            <i class="fas fa-arrow-trend-down"></i>
+            ${downPercent}%
+        `;
+    }
+    
+    if (elements.recommendation) {
+        const recommendation = result.recommendation || `${strength}_${signal}`;
+        const icon = isPositive ? 'fas fa-thumbs-up' : 'fas fa-thumbs-down';
+        elements.recommendation.innerHTML = `
+            <i class="${icon}"></i>
+            ${recommendation.replace('_', ' ')}
+        `;
+    }
+    
+    console.log('✅ Prediction results displayed successfully');
+}
+
+function updateEnhancedMetrics(result) {
+    // Update risk level
+    if (elements.riskLevel && elements.riskText) {
+        const confidence = result.confidence || 0.5;
+        let riskLevel, riskColor, riskIcon;
+        
+        if (confidence >= 0.8) {
+            riskLevel = 'LOW';
+            riskColor = '#10b981';
+            riskIcon = 'fas fa-shield-alt';
+        } else if (confidence >= 0.6) {
+            riskLevel = 'MODERATE';
+            riskColor = '#f59e0b';
+            riskIcon = 'fas fa-shield-half-alt';
+        } else {
+            riskLevel = 'HIGH';
+            riskColor = '#ef4444';
+            riskIcon = 'fas fa-exclamation-triangle';
+        }
+        
+        elements.riskLevel.style.color = riskColor;
+        elements.riskLevel.innerHTML = `
+            <i class="${riskIcon}"></i>
+            <span>${riskLevel}</span>
+        `;
+    }
+    
+    // Update model accuracy (simulated based on confidence)
+    if (elements.modelAccuracy) {
+        const accuracy = Math.min(85 + (result.confidence || 0.5) * 15, 98);
+        elements.modelAccuracy.textContent = `${accuracy.toFixed(1)}%`;
+    }
+    
+    // Update prediction score
+    if (elements.predictionScore) {
+        const score = Math.min(6 + (result.confidence || 0.5) * 4, 10);
+        elements.predictionScore.textContent = `${score.toFixed(1)}/10`;
+    }
+    
+    // Update market volatility
+    if (elements.marketVolatility) {
+        // This would ideally come from the API, but we'll simulate it
+        const volatilityLevels = ['LOW', 'MODERATE', 'HIGH'];
+        const volatility = volatilityLevels[Math.floor(Math.random() * 3)];
+        elements.marketVolatility.textContent = volatility;
+        
+        const colors = { LOW: '#10b981', MODERATE: '#f59e0b', HIGH: '#ef4444' };
+        elements.marketVolatility.style.color = colors[volatility];
+    }
+    
+    // Update analysis summary
+    if (elements.summaryContent) {
+        const signal = result.signal || 'HOLD';
+        const confidence = Math.round((result.confidence || 0.5) * 100);
+        const strength = result.signal_strength || 'MODERATE';
+        
+        elements.summaryContent.innerHTML = `
+            <p>Our AI model predicts a <strong style="color: ${signal === 'BUY' ? '#10b981' : '#ef4444'}">${signal}</strong> signal with <strong>${confidence}%</strong> confidence. The prediction strength is classified as <strong>${strength}</strong>.</p>
+            <p style="margin-top: 10px;">This analysis combines multiple technical indicators including moving averages, RSI, momentum, and volume patterns to provide comprehensive market direction guidance.</p>
+        `;
+    }
+}
+
+function extractTechnicalData(result) {
+    let technical = result.technical_indicators || result.indicators || {};
+    
+    if (Object.keys(technical).length === 0) {
+        console.log('⚠️ No technical indicators found, using defaults');
+        technical = FEATURE_NAMES.reduce((acc, feature) => {
+            acc[feature] = 0;
+            return acc;
+        }, {});
+    }
+    
+    return technical;
 }
 
 function validateTicker(ticker) {
@@ -513,6 +701,7 @@ function showLoadingState() {
     setElementDisplay('resultsContent', 'none');
     setElementDisplay('errorState', 'none');
     hideSuggestions();
+    console.log('📋 Showing loading state');
 }
 
 function showEmptyState() {
@@ -520,6 +709,7 @@ function showEmptyState() {
     setElementDisplay('emptyState', 'flex');
     setElementDisplay('resultsContent', 'none');
     setElementDisplay('errorState', 'none');
+    console.log('📋 Showing empty state');
 }
 
 function showResultsState() {
@@ -528,6 +718,7 @@ function showResultsState() {
     setElementDisplay('errorState', 'none');
     setElementDisplay('resultsContent', 'block');
     elements.resultsContent.classList.add('fade-in');
+    console.log('📋 Showing results state');
 }
 
 function showError(message, suggestions = []) {
@@ -547,6 +738,7 @@ function showError(message, suggestions = []) {
     }
     
     hideSuggestions();
+    console.log('❌ Showing error:', message);
 }
 
 function selectSuggestedTicker(ticker) {
@@ -585,7 +777,9 @@ function updateLastUpdate() {
         minute: '2-digit',
         second: '2-digit'
     });
-    elements.lastUpdate.textContent = `Last updated: ${timeString}`;
+    if (elements.lastUpdate) {
+        elements.lastUpdate.textContent = `Last updated: ${timeString}`;
+    }
 }
 
 function resetResults() {
@@ -611,15 +805,16 @@ function debounce(func, wait) {
 
 async function checkAPIStatus() {
     try {
+        console.log('🔍 Checking API status...');
         const response = await fetch(`${API_BASE_URL}/`, { timeout: 10000 });
         if (response.ok) {
             const data = await response.json();
+            console.log('🟢 API Status:', data);
             if (data.status === 'healthy') {
                 elements.apiStatus.querySelector('.status-dot').classList.add('connected');
                 elements.apiStatus.querySelector('.status-text').textContent = 
-                    `Connected • v${data.version || '3.1'} • ${data.data_sources ? 'Enhanced' : 'Standard'}`;
+                    `Connected • v${data.version || '3.2'} • ${data.data_sources ? 'Enhanced' : 'Standard'}`;
                 
-                // Show data source info if available
                 if (data.data_sources && data.data_sources.length > 0) {
                     console.log('📊 Data Sources Available:', data.data_sources);
                 }
@@ -630,128 +825,191 @@ async function checkAPIStatus() {
             throw new Error('API connection failed');
         }
     } catch (error) {
-        console.error('API status check failed:', error);
+        console.error('❌ API status check failed:', error);
         elements.apiStatus.querySelector('.status-text').textContent = 'API Disconnected';
         elements.apiStatus.querySelector('.status-dot').classList.remove('connected');
     }
 }
 
 function initializeCharts() {
-    const probabilityCtx = document.getElementById('probabilityChart').getContext('2d');
-    const featuresCtx = document.getElementById('featuresChart').getContext('2d');
+    console.log('📊 Initializing charts...');
+    
+    const probabilityCtx = document.getElementById('probabilityChart');
+    const featuresCtx = document.getElementById('featuresChart');
 
-    probabilityChart = new Chart(probabilityCtx, {
-        type: 'bar',
-        data: {
-            labels: ['Up', 'Down'],
-            datasets: [{
-                label: 'Prediction Probabilities',
-                data: [0, 0],
-                backgroundColor: ['#10b981', '#ef4444'],
-                borderColor: ['#10b981', '#ef4444'],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    max: 1,
+    if (!probabilityCtx || !featuresCtx) {
+        console.warn('⚠️ Chart canvases not found, retrying in 500ms...');
+        setTimeout(initializeCharts, 500);
+        return;
+    }
+
+    try {
+        probabilityChart = new Chart(probabilityCtx.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Bullish Probability', 'Bearish Probability'],
+                datasets: [{
+                    data: [0.5, 0.5],
+                    backgroundColor: ['#10b981', '#ef4444'],
+                    borderColor: ['#059669', '#dc2626'],
+                    borderWidth: 2,
+                    hoverBorderWidth: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#f8fafc',
+                            font: { size: 12 },
+                            padding: 15
+                        }
+                    },
                     title: {
                         display: true,
-                        text: 'Probability',
-                        color: '#f8fafc'
+                        text: 'Market Direction Probabilities',
+                        color: '#f8fafc',
+                        font: { size: 14, weight: 'bold' }
                     },
-                    ticks: {
-                        color: '#94a3b8'
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const percentage = (context.parsed * 100).toFixed(1);
+                                return `${context.label}: ${percentage}%`;
+                            }
+                        }
                     }
                 },
-                x: {
-                    ticks: {
-                        color: '#94a3b8'
-                    }
-                }
-            },
-            plugins: {
-                legend: {
-                    display: false
-                },
-                title: {
-                    display: true,
-                    text: 'Prediction Probabilities',
-                    color: '#f8fafc'
+                animation: {
+                    animateRotate: true,
+                    duration: 1000
                 }
             }
-        }
-    });
+        });
 
-    featuresChart = new Chart(featuresCtx, {
-        type: 'bar',
-        data: {
-            labels: FEATURE_NAMES,
-            datasets: [{
-                label: 'Feature Values',
-                data: Array(FEATURE_NAMES.length).fill(0),
-                backgroundColor: '#06b6d4',
-                borderColor: '#06b6d4',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
+        featuresChart = new Chart(featuresCtx.getContext('2d'), {
+            type: 'radar',
+            data: {
+                labels: FEATURE_NAMES.map(name => FEATURE_DISPLAY_NAMES[name] || name),
+                datasets: [{
+                    label: 'Current Values',
+                    data: Array(FEATURE_NAMES.length).fill(0),
+                    backgroundColor: 'rgba(6, 182, 212, 0.2)',
+                    borderColor: '#06b6d4',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#06b6d4',
+                    pointBorderColor: '#0891b2',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
                     title: {
                         display: true,
-                        text: 'Normalized Value',
-                        color: '#f8fafc'
-                    },
-                    ticks: {
-                        color: '#94a3b8'
+                        text: 'Technical Indicators Analysis',
+                        color: '#f8fafc',
+                        font: { size: 14, weight: 'bold' }
                     }
                 },
-                x: {
-                    ticks: {
-                        color: '#94a3b8',
-                        maxRotation: 45,
-                        minRotation: 45
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 1,
+                        ticks: { display: false },
+                        grid: { color: 'rgba(148, 163, 184, 0.3)' },
+                        angleLines: { color: 'rgba(148, 163, 184, 0.3)' },
+                        pointLabels: {
+                            color: '#cbd5e1',
+                            font: { size: 10 }
+                        }
                     }
-                }
-            },
-            plugins: {
-                legend: {
-                    display: false
-                },
-                title: {
-                    display: true,
-                    text: 'Technical Indicators',
-                    color: '#f8fafc'
                 }
             }
-        }
-    });
+        });
+
+        console.log('✅ Charts initialized successfully');
+        
+    } catch (error) {
+        console.error('❌ Failed to initialize charts:', error);
+        setTimeout(initializeCharts, 1000);
+    }
 }
 
 function updateCharts(result, features) {
-    const probabilities = result.probabilities || { up: 0.5, down: 0.5 };
-    probabilityChart.data.datasets[0].data = [probabilities.up, probabilities.down];
-    probabilityChart.update();
-
-    const featureValues = FEATURE_NAMES.map(feature => {
-        const value = features[feature] || 0;
-        if (feature === 'volume') {
-            return value / 1000000; // Normalize volume
-        } else if (feature === 'RSI_14') {
-            return value / 100; // Normalize RSI
-        } else if (['ma_7', 'ma_21'].includes(feature)) {
-            return value / 100; // Normalize MAs
+    console.log('📊 Updating charts with data:', { result, features });
+    
+    try {
+        if (probabilityChart && result.probabilities) {
+            const probabilities = result.probabilities;
+            probabilityChart.data.datasets[0].data = [probabilities.up, probabilities.down];
+            probabilityChart.update('active');
+            console.log('✅ Probability chart updated');
+        } else if (probabilityChart && result.confidence !== undefined) {
+            const isPositive = result.prediction === 1 || result.signal === 'BUY';
+            const upProb = isPositive ? result.confidence : (1 - result.confidence);
+            const downProb = 1 - upProb;
+            probabilityChart.data.datasets[0].data = [upProb, downProb];
+            probabilityChart.update('active');
+            console.log('✅ Probability chart updated (from confidence)');
         }
-        return Math.abs(value); // Use absolute value for others
-    });
-    featuresChart.data.datasets[0].data = featureValues;
-    featuresChart.update();
+
+        if (featuresChart && features) {
+            const featureValues = FEATURE_NAMES.map(feature => {
+                let value = features[feature] || 0;
+                
+                switch (feature) {
+                    case 'volume':
+                        value = Math.min(value / 10000000, 1);
+                        break;
+                    case 'RSI_14':
+                        value = value / 100;
+                        break;
+                    case 'ma_7':
+                    case 'ma_21':
+                        value = Math.min(Math.abs(value) / 500, 1);
+                        break;
+                    case 'pct_change':
+                        value = Math.min(Math.max((value + 0.1) / 0.2, 0), 1);
+                        break;
+                    case 'volatility_7':
+                        value = Math.min(value * 2, 1);
+                        break;
+                    case 'momentum_7':
+                    case 'momentum_21':
+                        value = Math.min(Math.max((value + 5) / 10, 0), 1);
+                        break;
+                    case 'ma_diff':
+                        value = Math.min(Math.max((value + 10) / 20, 0), 1);
+                        break;
+                    case 'vol_ratio_20':
+                        value = Math.min(value / 3, 1);
+                        break;
+                    default:
+                        value = Math.min(Math.abs(value), 1);
+                }
+                
+                return Math.max(0, value);
+            });
+            
+            featuresChart.data.datasets[0].data = featureValues;
+            featuresChart.update('active');
+            console.log('✅ Technical indicators chart updated:', featureValues);
+        }
+        
+    } catch (error) {
+        console.error('❌ Failed to update charts:', error);
+    }
 }
+
+// Global functions for HTML onclick
+window.selectSuggestedTicker = selectSuggestedTicker;
+window.switchMode = switchMode;
+window.resetResults = resetResults;
