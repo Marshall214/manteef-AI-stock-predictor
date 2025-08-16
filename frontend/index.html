@@ -3,20 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manteef AI Stock Predictor</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <title>Stock Predictor CSV</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1><i class="fas fa-chart-line"></i> Manteef AI Stock Predictor</h1>
-            <p>Advanced ML-powered stock prediction with real-time analysis</p>
+            <h1>Stock Predictor</h1>
+            <p>Predict stock movement using CSV-based historical data and XGBoost model.</p>
             <div class="api-status" id="apiStatus">
-                <div class="status-dot"></div>
-                <span class="status-text">Connecting...</span>
+                <span class="status-dot"></span>
+                <span class="status-text">Checking API...</span>
             </div>
         </div>
 
@@ -24,254 +22,75 @@
         <div class="main-content">
             <!-- Prediction Panel -->
             <div class="prediction-panel">
-                <!-- Mode Selector -->
                 <div class="mode-selector">
-                    <div class="mode-option active" id="tickerMode" onclick="switchMode('ticker')">
-                        <i class="fas fa-search"></i> Ticker Analysis
-                    </div>
-                    <div class="mode-option" id="manualMode" onclick="switchMode('manual')">
-                        <i class="fas fa-sliders-h"></i> Manual Input
-                    </div>
+                    <div class="mode-option active" onclick="switchMode('ticker')">Ticker Mode</div>
+                    <div class="mode-option" onclick="switchMode('manual')">Manual Mode</div>
                 </div>
 
-                <form id="predictionForm">
-                    <!-- Ticker Input Mode -->
-                    <div id="tickerInputSection" class="input-section">
-                        <div class="section-title">
-                            <i class="fas fa-chart-line"></i> Stock Analysis
+                <!-- Ticker Input -->
+                <div id="tickerMode" class="input-section">
+                    <div class="section-title">Enter Stock Ticker</div>
+                    <div class="ticker-input-group">
+                        <div class="ticker-input-container">
+                            <input type="text" id="tickerInput" class="ticker-input" placeholder="e.g., AAPL" oninput="handleTickerInput(event)">
+                            <div class="ticker-suggestions hidden" id="tickerSuggestions"></div>
                         </div>
-                        <div class="ticker-input-group">
-                            <div class="ticker-input-container">
-                                <input 
-                                    type="text" 
-                                    id="tickerInput" 
-                                    class="ticker-input" 
-                                    placeholder="Enter stock ticker (e.g., AAPL, TSLA, MSFT)"
-                                    maxlength="5"
-                                    autocomplete="off"
-                                >
-                                <div id="tickerSuggestions" class="ticker-suggestions hidden"></div>
-                            </div>
-                            <button type="button" class="btn btn-secondary" id="tickerInfoBtn">
-                                <i class="fas fa-info-circle"></i> Info
-                            </button>
-                        </div>
-                        <div class="button-group">
-                            <button type="submit" class="btn btn-primary" id="predictTickerBtn">
-                                <div class="btn-loader"></div>
-                                <span><i class="fas fa-magic"></i> Analyze & Predict</span>
-                            </button>
-                            <button type="button" class="btn btn-secondary" id="clearTickerBtn">
-                                <i class="fas fa-eraser"></i> Clear
-                            </button>
-                        </div>
-                        <div id="summaryContent" style="color: #cbd5e1; line-height: 1.6;">
-                            <p>Advanced machine learning analysis combining multiple technical indicators to provide comprehensive market direction prediction.</p>
-                        </div>
-
-                        <!-- Key Metrics -->
-                        <div id="keyMetrics" class="key-metrics" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 20px;">
-                            <div class="key-metric" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 15px; text-align: center; border: 1px solid rgba(148, 163, 184, 0.1);">
-                                <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 5px;">Model Accuracy</div>
-                                <div style="color: #10b981; font-size: 1.2rem; font-weight: 600;" id="modelAccuracy">92.5%</div>
-                            </div>
-                            <div class="key-metric" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 15px; text-align: center; border: 1px solid rgba(148, 163, 184, 0.1);">
-                                <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 5px;">Prediction Score</div>
-                                <div style="color: #3b82f6; font-size: 1.2rem; font-weight: 600;" id="predictionScore">8.7/10</div>
-                            </div>
-                            <div class="key-metric" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 15px; text-align: center; border: 1px solid rgba(148, 163, 184, 0.1);">
-                                <div style="color: #94a3b8; font-size: 0.8rem; margin-bottom: 5px;">Market Volatility</div>
-                                <div style="color: #f59e0b; font-size: 1.2rem; font-weight: 600;" id="marketVolatility">MODERATE</div>
-                            </div>
-                        </div>
-
-                        <!-- Last Update -->
-                        <div id="lastUpdate" class="last-update">
-                            Last updated: --:--:--
-                        </div>
-                    </div>
-
-                    <!-- Manual Input Mode -->
-                    <div id="manualInputSection" class="input-section hidden">
-                        <div class="section-title">
-                            <i class="fas fa-sliders-h"></i> Technical Indicators
-                        </div>
-                        <div class="input-grid">
-                            <div class="input-group">
-                                <label for="pct_change">Price Change (%)</label>
-                                <input type="number" id="pct_change" step="0.001" placeholder="0.025">
-                            </div>
-                            <div class="input-group">
-                                <label for="ma_7">MA 7-Day</label>
-                                <input type="number" id="ma_7" step="0.01" placeholder="46.50">
-                            </div>
-                            <div class="input-group">
-                                <label for="ma_21">MA 21-Day</label>
-                                <input type="number" id="ma_21" step="0.01" placeholder="45.20">
-                            </div>
-                            <div class="input-group">
-                                <label for="volatility_7">Volatility (7d)</label>
-                                <input type="number" id="volatility_7" step="0.001" placeholder="0.12">
-                            </div>
-                            <div class="input-group">
-                                <label for="volume">Volume</label>
-                                <input type="number" id="volume" step="1000" placeholder="3200000">
-                            </div>
-                            <div class="input-group">
-                                <label for="RSI_14">RSI (14)</label>
-                                <input type="number" id="RSI_14" step="0.1" min="0" max="100" placeholder="72.3">
-                            </div>
-                            <div class="input-group">
-                                <label for="momentum_7">Momentum (7d)</label>
-                                <input type="number" id="momentum_7" step="0.1" placeholder="1.5">
-                            </div>
-                            <div class="input-group">
-                                <label for="momentum_21">Momentum (21d)</label>
-                                <input type="number" id="momentum_21" step="0.1" placeholder="2.1">
-                            </div>
-                            <div class="input-group">
-                                <label for="ma_diff">MA Difference</label>
-                                <input type="number" id="ma_diff" step="0.01" placeholder="1.30">
-                            </div>
-                            <div class="input-group">
-                                <label for="vol_ratio_20">Volume Ratio (20d)</label>
-                                <input type="number" id="vol_ratio_20" step="0.01" placeholder="1.45">
-                            </div>
-                        </div>
-                        <div class="button-group">
-                            <button type="submit" class="btn btn-primary" id="predictBtn">
-                                <div class="btn-loader"></div>
-                                <span><i class="fas fa-magic"></i> Predict</span>
-                            </button>
-                            <button type="button" class="btn btn-secondary" id="clearBtn">
-                                <i class="fas fa-eraser"></i> Clear
-                            </button>
-                            <button type="button" class="btn btn-secondary" id="sampleBtn">
-                                <i class="fas fa-dice"></i> Sample
-                            </button>
-                        </div>
-                    </div>
-                </form>
-            </div>
-
-            <!-- Results Panel -->
-            <div class="results-panel">
-                <!-- Empty State -->
-                <div id="emptyState" class="state-container">
-                    <div class="empty-state">
-                        <i class="fas fa-chart-area"></i>
-                        <h3>Ready for Analysis</h3>
-                        <p>Enter a stock ticker or manual indicators to get started</p>
-                    </div>
-                </div>
-
-                <!-- Loading State -->
-                <div id="loadingState" class="state-container hidden">
-                    <div class="loading-state">
-                        <i class="fas fa-spinner"></i>
-                        <h3>Analyzing...</h3>
-                        <p>Fetching data and calculating predictions</p>
-                    </div>
-                </div>
-
-                <!-- Error State -->
-                <div id="errorState" class="state-container hidden">
-                    <div class="error-state">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <h3>Analysis Failed</h3>
-                        <p id="errorMessage">Something went wrong</p>
-                        <div id="errorSuggestions" class="error-suggestions hidden">
-                            <p><strong>Try these instead:</strong></p>
-                            <div id="suggestedTickers" class="suggested-tickers"></div>
-                        </div>
-                        <button class="btn btn-secondary" onclick="resetResults()" style="margin-top: 15px;">
-                            <i class="fas fa-redo"></i> Try Again
+                        <button class="btn btn-primary" onclick="submitTickerPrediction()">
+                            <span>Predict</span>
+                            <div class="btn-loader"></div>
                         </button>
                     </div>
                 </div>
 
-                <!-- Results Content -->
-                <div id="resultsContent" class="hidden">
-                    <!-- Ticker Info (shown only for ticker predictions) -->
-                    <div id="tickerInfo" class="ticker-info hidden">
-                        <h3>
-                            <span id="tickerSymbol">AAPL</span> Stock Information
-                            <span class="data-source-badge" id="dataSourceBadge">Multi-Source</span>
-                        </h3>
-                        <div class="info-grid">
-                            <div class="info-item">
-                                <div class="info-label">Current Price</div>
-                                <div class="info-value" id="currentPrice">$150.23</div>
-                            </div>
-                            <div class="info-item">
-                                <div class="info-label">Previous Close</div>
-                                <div class="info-value" id="previousClose">$149.45</div>
-                            </div>
-                            <div class="info-item">
-                                <div class="info-label">Data Points</div>
-                                <div class="info-value" id="dataPoints">90</div>
-                            </div>
-                            <div class="info-item">
-                                <div class="info-label">Date Range</div>
-                                <div class="info-value" id="dateRange">3 months</div>
-                            </div>
-                            <div class="info-item">
-                                <div class="info-label">Data Source</div>
-                                <div class="info-value" id="dataSource">Finnhub</div>
-                            </div>
-                            <div class="info-item">
-                                <div class="info-label">Market Status</div>
-                                <div class="info-value" id="marketStatus">Open</div>
-                            </div>
-                        </div>
+                <!-- Manual Input -->
+                <div id="manualMode" class="input-section hidden">
+                    <div class="section-title">Enter Technical Indicators</div>
+                    <div class="input-grid" id="manualInputs">
+                        <!-- Feature inputs will be dynamically inserted by JS -->
                     </div>
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="submitManualPrediction()">
+                            <span>Predict</span>
+                            <div class="btn-loader"></div>
+                        </button>
+                        <button class="btn btn-secondary" onclick="fillSampleData()">Fill Sample Data</button>
+                    </div>
+                </div>
+            </div>
 
-                    <!-- Prediction Card -->
-                    <div id="predictionCard" class="prediction-card">
+            <!-- Results Panel -->
+            <div class="results-panel">
+                <div id="loadingState" class="state-container loading-state hidden">
+                    <i>⏳</i>
+                    <div>Loading...</div>
+                </div>
+
+                <div id="emptyState" class="state-container empty-state">
+                    <i>📭</i>
+                    <div>No results yet</div>
+                </div>
+
+                <div id="errorState" class="state-container error-state hidden">
+                    <i>⚠️</i>
+                    <div id="errorMessage"></div>
+                    <div class="error-suggestions hidden" id="errorSuggestions">
+                        Suggested tickers: <div class="suggested-tickers" id="suggestedTickers"></div>
+                    </div>
+                </div>
+
+                <div id="resultsContent" class="hidden">
+                    <div class="prediction-card" id="signalCard">
                         <div class="signal-display">
+                            <span id="signalIcon">📈</span>
                             <span id="signalText">BUY</span>
-                            <div id="signalIcon"><i class="fas fa-arrow-up"></i></div>
                         </div>
                         <div class="confidence-bar">
-                            <div id="confidenceFill" class="confidence-fill"></div>
+                            <div class="confidence-fill" id="confidenceFill"></div>
                         </div>
-                        <div id="confidenceText" class="confidence-text">75%</div>
-                        <div id="strengthBadge" class="strength-badge">STRONG</div>
+                        <div class="confidence-text" id="confidenceText"></div>
+                        <div class="strength-badge" id="strengthBadge"></div>
                     </div>
 
-                    <!-- Metrics Grid -->
-                    <div class="metrics-grid">
-                        <div class="metric-card">
-                            <div class="metric-label">Bullish Probability</div>
-                            <div class="metric-value trend-up" id="upProbability">
-                                <i class="fas fa-arrow-trend-up"></i>
-                                75%
-                            </div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-label">Bearish Probability</div>
-                            <div class="metric-value trend-down" id="downProbability">
-                                <i class="fas fa-arrow-trend-down"></i>
-                                25%
-                            </div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-label">Recommendation</div>
-                            <div class="metric-value" style="color: #06b6d4;" id="recommendation">
-                                <i class="fas fa-thumbs-up"></i>
-                                STRONG BUY
-                            </div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-label">Risk Level</div>
-                            <div class="metric-value" id="riskLevel">
-                                <i class="fas fa-shield-alt"></i>
-                                <span id="riskText">MODERATE</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Charts -->
                     <div class="charts-container">
                         <div class="chart-container">
                             <canvas id="probabilityChart"></canvas>
@@ -281,14 +100,7 @@
                         </div>
                     </div>
 
-                    <!-- Analysis Summary -->
-                    <div id="analysisSummary" class="analysis-summary" style="background: rgba(15, 23, 42, 0.6); border-radius: 12px; padding: 20px; margin-top: 20px; border: 1px solid rgba(148, 163, 184, 0.1);">
-                        <h4 style="color: #06b6d4; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
-                            <i class="fas fa-lightbulb"></i>
-                            AI Analysis Summary
-                        </h4>
-                        <div id="summaryContent"></div>
-                    </div>
+                    <div class="last-update" id="lastUpdate"></div>
                 </div>
             </div>
         </div>
