@@ -9,12 +9,14 @@ import os
 import xgboost as xgb
 from datetime import datetime, timedelta
 import yfinance as yf
+import requests
 from typing import Dict, Optional
 import logging
 import psutil
 import pytz
 from functools import wraps
 import time
+import random
 
 # Configure logging
 logging.basicConfig(
@@ -38,7 +40,7 @@ limiter = Limiter(
     default_limits=["200 per day", "50 per hour"]
 )
 
-# CORS configuration - FIXED: Use ONLY Flask-CORS, no manual headers
+# CORS configuration
 CORS(app, resources={
     r"/*": {
         "origins": [
@@ -92,6 +94,16 @@ POPULAR_TICKERS = {
     'Z': ['ZM', 'ZNGA']
 }
 
+# Multiple User Agents to rotate
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15'
+]
+
 # Load model
 try:
     model = xgb.XGBClassifier()
@@ -105,7 +117,6 @@ def suggest_similar_tickers(ticker: str) -> list:
     """Suggest similar tickers based on first letter"""
     if not ticker:
         return ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA']
-    
     first_letter = ticker[0].upper()
     suggestions = POPULAR_TICKERS.get(first_letter, ['AAPL', 'MSFT', 'GOOGL'])
     return suggestions[:3]
@@ -115,14 +126,10 @@ def is_market_open():
     try:
         et = pytz.timezone('US/Eastern')
         now_et = datetime.now(et)
-        
-        # Basic market hours check (9:30 AM - 4:00 PM ET, Mon-Fri)
         if now_et.weekday() > 4:  # Weekend
             return False
-        
         market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
         market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
-        
         return market_open <= now_et <= market_close
     except Exception:
         return False
@@ -133,7 +140,6 @@ def add_market_context(result: dict) -> dict:
         try:
             et = pytz.timezone('US/Eastern')
             now_et = datetime.now(et)
-            
             result['metadata']['market_status'] = {
                 'is_open': is_market_open(),
                 'is_weekend': now_et.weekday() > 4,
@@ -147,7 +153,7 @@ def add_market_context(result: dict) -> dict:
 def calculate_rsi(prices: pd.Series, period: int = 14) -> float:
     """Calculate RSI (Relative Strength Index)"""
     if len(prices) < period + 1:
-        return 50.0  # Default neutral RSI
+        return 50.0
     delta = prices.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
@@ -155,44 +161,95 @@ def calculate_rsi(prices: pd.Series, period: int = 14) -> float:
     rsi = 100 - (100 / (1 + rs))
     return float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50.0
 
-def get_stock_data(ticker: str, period_days: int = 90) -> dict:
+def create_enhanced_session():
+    """Create a robust session with rotation and retry logic"""
+    session = requests.Session()
+    
+    # Random user agent
+    user_agent = random.choice(USER_AGENTS)
+    session.headers.update({
+        'User-Agent': user_agent,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+    })
+    
+    # Add retry strategy
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+    
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["HEAD", "GET", "OPTIONS"]
+    )
+    
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
+    return session
+
+def get_stock_data_enhanced(ticker: str, period_days: int = 90) -> dict:
     """
-    Get stock data using yfinance
+    Enhanced stock data fetching with multiple strategies and fallbacks
     """
+    ticker = ticker.upper().strip()
+    logger.info(f"🔍 Fetching data for {ticker} using enhanced method")
+    
+    # Strategy 1: Standard yfinance with enhanced session
     try:
-        # Clean ticker symbol
-        ticker = ticker.upper().strip()
+        logger.info(f"📊 Strategy 1: Enhanced yfinance for {ticker}")
+        session = create_enhanced_session()
+        stock = yf.Ticker(ticker, session=session)
         
-        # Create yfinance Ticker object
-        stock = yf.Ticker(ticker)
+        # Try different period formats
+        periods_to_try = ['3mo', '6mo', '1y', '2y']
+        hist_data = None
         
-        # Calculate date range
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=period_days * 2)  # Get extra data to ensure we have enough
+        for period in periods_to_try:
+            try:
+                logger.info(f"  Trying period: {period}")
+                hist_data = stock.history(period=period, auto_adjust=True, prepost=True)
+                if not hist_data.empty and len(hist_data) >= 30:
+                    logger.info(f"  ✅ Success with {period}: {len(hist_data)} days")
+                    break
+                else:
+                    logger.info(f"  ⚠️ {period} returned {len(hist_data)} days")
+            except Exception as e:
+                logger.info(f"  ❌ {period} failed: {e}")
+                continue
         
-        # Get historical data
-        hist_data = stock.history(start=start_date, end=end_date)
+        if hist_data is None or hist_data.empty or len(hist_data) < 30:
+            raise ValueError(f"All period attempts failed for {ticker}")
         
-        if hist_data.empty:
-            raise ValueError(f"No data found for ticker {ticker}")
-        
-        # Get company info with error handling
+        # Try to get company info with timeout
         info = {}
         try:
+            logger.info(f"  Getting company info for {ticker}")
             stock_info = stock.info
-            info = {
-                'ticker': ticker,
-                'current_price': stock_info.get('currentPrice', hist_data['Close'].iloc[-1]),
-                'previous_close': stock_info.get('previousClose', hist_data['Close'].iloc[-2] if len(hist_data) > 1 else hist_data['Close'].iloc[-1]),
-                'market_cap': stock_info.get('marketCap', 'N/A'),
-                'company_name': stock_info.get('longName', stock_info.get('shortName', ticker)),
-                'sector': stock_info.get('sector', 'N/A'),
-                'industry': stock_info.get('industry', 'N/A'),
-                'description': stock_info.get('longBusinessSummary', f"Stock information for {ticker}")
-            }
+            if stock_info and isinstance(stock_info, dict) and len(stock_info) > 5:
+                info = {
+                    'ticker': ticker,
+                    'current_price': stock_info.get('currentPrice') or stock_info.get('regularMarketPrice') or float(hist_data['Close'].iloc[-1]),
+                    'previous_close': stock_info.get('previousClose') or stock_info.get('regularMarketPreviousClose') or (float(hist_data['Close'].iloc[-2]) if len(hist_data) > 1 else float(hist_data['Close'].iloc[-1])),
+                    'market_cap': stock_info.get('marketCap', 'N/A'),
+                    'company_name': stock_info.get('longName') or stock_info.get('shortName') or ticker,
+                    'sector': stock_info.get('sector', 'N/A'),
+                    'industry': stock_info.get('industry', 'N/A'),
+                    'description': stock_info.get('longBusinessSummary', f"Stock information for {ticker}")[:200] + "..." if stock_info.get('longBusinessSummary') else f"Stock information for {ticker}"
+                }
+                logger.info(f"  ✅ Company info retrieved: {info.get('company_name', 'N/A')}")
+            else:
+                raise ValueError("Info data insufficient")
         except Exception as e:
-            logger.warning(f"Could not fetch detailed company info for {ticker}: {e}")
-            # Fallback to basic info from historical data
+            logger.warning(f"  ⚠️ Company info failed, using basic info: {e}")
             info = {
                 'ticker': ticker,
                 'current_price': float(hist_data['Close'].iloc[-1]),
@@ -208,30 +265,157 @@ def get_stock_data(ticker: str, period_days: int = 90) -> dict:
             'success': True,
             'data': hist_data,
             'info': info,
-            'source': 'yfinance'
+            'source': 'yfinance_enhanced'
         }
         
     except Exception as e:
-        logger.error(f"Error fetching data for {ticker}: {str(e)}")
-        return {
-            'success': False,
-            'error': f"Could not fetch data for {ticker}. Please verify the ticker symbol.",
-            'source': 'yfinance'
-        }
+        logger.warning(f"❌ Strategy 1 failed for {ticker}: {e}")
+        
+    # Strategy 2: Simplified yfinance without session
+    try:
+        logger.info(f"📊 Strategy 2: Simple yfinance for {ticker}")
+        stock = yf.Ticker(ticker)
+        hist_data = stock.history(period='6mo')
+        
+        if not hist_data.empty and len(hist_data) >= 20:
+            logger.info(f"  ✅ Simple method success: {len(hist_data)} days")
+            info = {
+                'ticker': ticker,
+                'current_price': float(hist_data['Close'].iloc[-1]),
+                'previous_close': float(hist_data['Close'].iloc[-2]) if len(hist_data) > 1 else float(hist_data['Close'].iloc[-1]),
+                'market_cap': 'N/A',
+                'company_name': ticker,
+                'sector': 'N/A',
+                'industry': 'N/A',
+                'description': f"Stock information for {ticker}"
+            }
+            return {
+                'success': True,
+                'data': hist_data,
+                'info': info,
+                'source': 'yfinance_simple'
+            }
+        else:
+            raise ValueError("Insufficient data from simple method")
+            
+    except Exception as e:
+        logger.warning(f"❌ Strategy 2 failed for {ticker}: {e}")
+    
+    # Strategy 3: Alternative API approach (direct Yahoo Finance API)
+    try:
+        logger.info(f"📊 Strategy 3: Direct Yahoo API for {ticker}")
+        return get_yahoo_direct_data(ticker)
+    except Exception as e:
+        logger.warning(f"❌ Strategy 3 failed for {ticker}: {e}")
+    
+    # All strategies failed
+    logger.error(f"❌ All strategies failed for {ticker}")
+    suggestions = suggest_similar_tickers(ticker)
+    return {
+        'success': False,
+        'error': f"Could not fetch data for {ticker}. This could be due to network restrictions or invalid ticker symbol.",
+        'suggestions': suggestions,
+        'help': f"Try: {', '.join(suggestions)} or check if {ticker} is a valid stock symbol",
+        'source': 'none'
+    }
+
+def get_yahoo_direct_data(ticker: str) -> dict:
+    """
+    Direct Yahoo Finance API approach as fallback
+    """
+    session = create_enhanced_session()
+    
+    # Get historical data directly from Yahoo Finance API
+    end_date = int(datetime.now().timestamp())
+    start_date = int((datetime.now() - timedelta(days=365)).timestamp())
+    
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+    params = {
+        'period1': start_date,
+        'period2': end_date,
+        'interval': '1d',
+        'includePrePost': 'true'
+    }
+    
+    headers = {
+        'User-Agent': random.choice(USER_AGENTS),
+        'Accept': 'application/json'
+    }
+    
+    response = session.get(url, params=params, headers=headers, timeout=15)
+    response.raise_for_status()
+    
+    data = response.json()
+    
+    if 'chart' not in data or 'result' not in data['chart'] or not data['chart']['result']:
+        raise ValueError(f"No data returned from Yahoo API for {ticker}")
+    
+    result = data['chart']['result'][0]
+    timestamps = result['timestamp']
+    quote = result['indicators']['quote'][0]
+    
+    # Create DataFrame
+    df_data = {
+        'Open': quote.get('open', []),
+        'High': quote.get('high', []),
+        'Low': quote.get('low', []),
+        'Close': quote.get('close', []),
+        'Volume': quote.get('volume', [])
+    }
+    
+    # Remove None values
+    valid_indices = [i for i, close in enumerate(df_data['Close']) if close is not None]
+    
+    if len(valid_indices) < 30:
+        raise ValueError(f"Insufficient valid data points for {ticker}")
+    
+    # Filter data
+    filtered_data = {}
+    filtered_timestamps = []
+    
+    for i in valid_indices:
+        filtered_timestamps.append(timestamps[i])
+        for key in df_data:
+            if key not in filtered_data:
+                filtered_data[key] = []
+            filtered_data[key].append(df_data[key][i] or 0)
+    
+    # Create DataFrame with proper timestamps
+    hist_data = pd.DataFrame(filtered_data)
+    hist_data.index = pd.to_datetime(filtered_timestamps, unit='s')
+    
+    # Basic info
+    meta = result.get('meta', {})
+    info = {
+        'ticker': ticker,
+        'current_price': float(meta.get('regularMarketPrice', hist_data['Close'].iloc[-1])),
+        'previous_close': float(meta.get('previousClose', hist_data['Close'].iloc[-2] if len(hist_data) > 1 else hist_data['Close'].iloc[-1])),
+        'market_cap': 'N/A',
+        'company_name': meta.get('longName', ticker),
+        'sector': 'N/A',
+        'industry': 'N/A',
+        'description': f"Stock information for {ticker}"
+    }
+    
+    return {
+        'success': True,
+        'data': hist_data,
+        'info': info,
+        'source': 'yahoo_direct'
+    }
 
 @cache.memoize(timeout=300)
 def calculate_technical_indicators(ticker: str, period_days: int = 90) -> Optional[Dict]:
-    """Calculate technical indicators using yfinance data"""
+    """Calculate technical indicators using enhanced data fetching"""
     try:
-        # Get stock data
-        result = get_stock_data(ticker, period_days)
+        # Get stock data using enhanced method
+        result = get_stock_data_enhanced(ticker, period_days)
         
         if not result['success']:
-            suggestions = suggest_similar_tickers(ticker)
             return {
                 'error': result['error'],
-                'suggestions': suggestions,
-                'help': f"Try: {', '.join(suggestions)}",
+                'suggestions': result.get('suggestions', []),
+                'help': result.get('help', 'Please try a different ticker'),
                 'success': False
             }
         
@@ -242,9 +426,12 @@ def calculate_technical_indicators(ticker: str, period_days: int = 90) -> Option
             available_days = len(df)
             return {
                 'error': f"Not enough trading history for {ticker}. Found {available_days} days, need at least 30. This might be a newly listed stock.",
+                'suggestions': suggest_similar_tickers(ticker),
                 'help': "Try a different stock with longer trading history",
                 'success': False
             }
+        
+        logger.info(f"✅ Processing {len(df)} days of data for {ticker} from {result['source']}")
         
         # Calculate technical indicators
         close_prices = df['Close']
@@ -261,13 +448,13 @@ def calculate_technical_indicators(ticker: str, period_days: int = 90) -> Option
         volatility_7 = volatility_7 if not pd.isna(volatility_7) else 0.01
         
         # Volume and other indicators
-        volume = float(volumes.iloc[-1])
+        volume = float(volumes.iloc[-1]) if not pd.isna(volumes.iloc[-1]) else 1000000
         RSI_14 = calculate_rsi(close_prices, 14)
         momentum_7 = (close_prices.iloc[-1] - close_prices.iloc[-8]) / close_prices.iloc[-8] if len(close_prices) > 7 else 0.0
         momentum_21 = (close_prices.iloc[-1] - close_prices.iloc[-22]) / close_prices.iloc[-22] if len(close_prices) > 21 else 0.0
         ma_diff = ma_7 - ma_21
         avg_volume_20 = volumes.rolling(window=20).mean().iloc[-1] if len(volumes) >= 20 else volumes.mean()
-        vol_ratio_20 = volume / avg_volume_20 if avg_volume_20 > 0 else 1.0
+        vol_ratio_20 = volume / avg_volume_20 if avg_volume_20 > 0 and not pd.isna(avg_volume_20) else 1.0
         
         indicators = {
             'pct_change': float(pct_change),
@@ -286,7 +473,7 @@ def calculate_technical_indicators(ticker: str, period_days: int = 90) -> Option
             'ticker': ticker.upper(),
             'current_price': float(result['info']['current_price']),
             'previous_close': float(result['info']['previous_close']),
-            'data_source': 'yfinance',
+            'data_source': result['source'],
             'data_points': len(df),
             'date_range': {
                 'start': df.index[0].strftime('%Y-%m-%d'),
@@ -301,14 +488,16 @@ def calculate_technical_indicators(ticker: str, period_days: int = 90) -> Option
             'success': True
         }
         
+        logger.info(f"✅ Technical indicators calculated for {ticker}")
         return add_market_context(final_result)
         
     except Exception as e:
         logger.error(f"Error calculating indicators for {ticker}: {e}")
         suggestions = suggest_similar_tickers(ticker)
         return {
-            'error': f"Failed to fetch data for {ticker}: {str(e)}",
+            'error': f"Failed to process data for {ticker}: {str(e)}",
             'suggestions': suggestions,
+            'help': f"Try: {', '.join(suggestions)}",
             'success': False
         }
 
@@ -359,13 +548,11 @@ def make_prediction(df: pd.DataFrame, input_data: dict) -> tuple:
 def log_request_info():
     request.start_time = time.time()
 
-# FIXED: Remove manual CORS headers from @app.after_request
 @app.after_request
 def log_request_response(response):
     duration = time.time() - request.start_time
     logger.info(f"{request.method} {request.path} - {response.status_code} - {duration:.2f}s")
     
-    # Only try to access request.json for appropriate requests
     if request.method == 'POST' and request.content_type and 'application/json' in request.content_type:
         try:
             if hasattr(request, 'json') and request.json:
@@ -376,7 +563,47 @@ def log_request_response(response):
     
     return response
 
-# REMOVED: Manual preflight handler - Flask-CORS handles this automatically
+# Add diagnostic endpoint for testing
+@app.route('/test-yfinance', methods=['GET'])
+def test_yfinance_endpoint():
+    """Test yfinance functionality"""
+    results = []
+    
+    def log_result(message, success=True):
+        results.append({
+            'message': message,
+            'success': success,
+            'timestamp': datetime.now().isoformat()
+        })
+    
+    # Test basic yfinance
+    try:
+        import yfinance as yf
+        log_result(f"✅ YFinance imported, version: {yf.__version__}")
+    except Exception as e:
+        log_result(f"❌ YFinance import failed: {e}", False)
+        return jsonify({'results': results})
+    
+    # Test enhanced method
+    test_tickers = ['AAPL', 'MSFT', 'TSLA']
+    for ticker in test_tickers:
+        try:
+            result = get_stock_data_enhanced(ticker)
+            if result['success']:
+                log_result(f"✅ {ticker}: {len(result['data'])} days via {result['source']}")
+            else:
+                log_result(f"❌ {ticker}: {result.get('error', 'Failed')}", False)
+        except Exception as e:
+            log_result(f"❌ {ticker}: Exception - {e}", False)
+    
+    return jsonify({
+        'results': results,
+        'summary': {
+            'total_tests': len(results),
+            'passed': len([r for r in results if r['success']]),
+            'failed': len([r for r in results if not r['success']])
+        }
+    })
 
 # API Endpoints
 @app.route('/', methods=['GET'])
@@ -386,12 +613,13 @@ def health_check():
         'status': 'healthy',
         'model_loaded': model is not None,
         'timestamp': datetime.now().isoformat(),
-        'version': '3.1.0',
-        'environment': os.getenv('FLASK_ENV', 'development'),
-        'features': ['manual_prediction', 'ticker_prediction', 'ticker_info', 'yfinance_integration'],
-        'data_sources': ['yfinance_primary'],
+        'version': '3.2.0',
+        'environment': os.getenv('FLASK_ENV', 'production'),
+        'features': ['manual_prediction', 'ticker_prediction', 'ticker_info', 'enhanced_yfinance'],
+        'data_sources': ['yfinance_enhanced', 'yfinance_simple', 'yahoo_direct'],
         'market_open': is_market_open(),
-        'cors_enabled': True
+        'cors_enabled': True,
+        'enhancements': ['multiple_user_agents', 'retry_logic', 'fallback_strategies']
     })
 
 @app.route('/predict', methods=['POST'])
@@ -419,7 +647,7 @@ def predict():
 @app.route('/predict-ticker', methods=['POST'])
 @limiter.limit("20 per minute")
 def predict_ticker():
-    """Ticker prediction using yfinance"""
+    """Ticker prediction using enhanced yfinance"""
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 500
         
@@ -437,7 +665,7 @@ def predict_ticker():
                 'help': f"Try: {', '.join(suggestions)}"
             }), 400
             
-        # Calculate technical indicators
+        # Calculate technical indicators using enhanced method
         result = calculate_technical_indicators(ticker)
         
         if not result.get('success'):
@@ -520,13 +748,14 @@ def model_info():
         info = {
             'model_type': model_type,
             'timestamp': datetime.now().isoformat(),
-            'environment': os.getenv('FLASK_ENV', 'development'),
+            'environment': os.getenv('FLASK_ENV', 'production'),
             'feature_count': len(feature_names),
             'features': feature_names,
             'data_sources': {
-                'primary': 'Yahoo Finance (yfinance)',
-                'fallback': 'None (yfinance is primary and only source)',
-                'yfinance_available': True
+                'primary': 'Enhanced Yahoo Finance (yfinance)',
+                'fallback_1': 'Simple yfinance',
+                'fallback_2': 'Direct Yahoo API',
+                'strategies': 3
             },
             'key_parameters': {}
         }
@@ -572,16 +801,16 @@ def ratelimit_handler(e):
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("FLASK_ENV") != "production"
-    logger.info("🚀 Starting Enhanced Manteef Stock Predictor API v3.1...")
+    logger.info("🚀 Starting Enhanced Manteef Stock Predictor API v3.2...")
     logger.info("📡 Available endpoints:")
     logger.info("   GET  /           - Health check")
+    logger.info("   GET  /test-yfinance - Diagnostic test")
     logger.info("   POST /predict    - Make prediction (manual input)")
     logger.info("   POST /predict-ticker - Make prediction from ticker")
     logger.info("   POST /ticker-info - Get ticker technical indicators")
     logger.info("   GET  /features   - Get expected features")
     logger.info("   GET  /model-info - Get model information")
-    logger.info("📊 Data Source: Yahoo Finance (yfinance) - No API key required")
+    logger.info("📊 Data Sources: Enhanced YFinance with 3 fallback strategies")
     logger.info(f"🌐 Running on port {port}")
-    logger.info("✅ CORS enabled for all origins")
-    logger.info("✅ OPTIONS requests handled")
+    logger.info("✅ CORS enabled for specified origins")
     app.run(debug=debug, host="0.0.0.0", port=port)
